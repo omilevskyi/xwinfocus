@@ -4,6 +4,7 @@ MAN=
 
 LOCALBASE?=	/usr/local
 
+#CC=		${LOCALBASE}/bin/clang21
 CFLAGS:=	-O3 -ffast-math -flto=full ${CFLAGS:N-O*}
 CFLAGS+=	-I${LOCALBASE}/include
 #CFLAGS+=	-g
