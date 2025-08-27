@@ -1,0 +1,26 @@
+SLEEP_SEC?=	7
+
+pr: .PHONY push do-pr sleep watch
+do-pr: .PHONY
+	gh pr create --fill
+
+push: .PHONY
+	git push --verbose --set-upstream origin $$(git branch --show-current)
+
+push-force: .PHONY
+	git push --force --verbose --set-upstream origin $$(git branch --show-current)
+
+status: .PHONY .SILENT
+	gh pr status --json latestReviews,reviewDecision --jq '.currentBranch | [.reviewDecision, .latestReviews[-1].author.login, .latestReviews[-1].state] | join(" ")'
+
+sleep: .PHONY .SILENT
+	sleep ${SLEEP_SEC}
+
+watch: .PHONY .SILENT
+	gh pr checks --watch --interval ${SLEEP_SEC} || :
+
+web: .PHONY .SILENT
+	gh pr view --web
+
+merge: .PHONY
+	gh pr merge --squash --delete-branch

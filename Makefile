@@ -6,6 +6,7 @@ LOCALBASE?=	/usr/local
 
 CFLAGS:=	-O3 -ffast-math -flto=full ${CFLAGS:N-O*}
 CFLAGS+=	-I${LOCALBASE}/include
+CFLAGS+=	-g
 LDFLAGS+=	-Wl,-O3
 LDFLAGS+=	-Wl,--as-needed
 LDFLAGS+=	-Wl,--sort-common
@@ -36,4 +37,5 @@ install-home: .PHONY
 install: .PHONY
 	${INSTALL} -s ${PROG} ${DESTDIR}${PREFIX}/bin
 
+.sinclude "Makefile.local"
 .include <bsd.prog.mk>
