@@ -1,12 +1,12 @@
 PROG=		xwinfocus
-SRCS=		main.c
+SRCS=		main.c xwinfocus.h
 MAN=
 
 LOCALBASE?=	/usr/local
 
 CFLAGS:=	-O3 -ffast-math -flto=full ${CFLAGS:N-O*}
 CFLAGS+=	-I${LOCALBASE}/include
-CFLAGS+=	-g
+#CFLAGS+=	-g
 LDFLAGS+=	-Wl,-O3
 LDFLAGS+=	-Wl,--as-needed
 LDFLAGS+=	-Wl,--sort-common

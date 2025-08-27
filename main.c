@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <errno.h>
 #include <getopt.h>
 #include <libgen.h>
@@ -106,7 +108,7 @@ static Window find_window(Display *dpy, Window root, const char *target_name,
                 WINID_FMT_LEN, (unsigned long)windows[i], name_left, name_body,
                 name_right, class_left, class_body, class_right);
       }
-      if ((target_name == NULL || strlen(target_name) == 0 ||
+      if ((target_name == NULL ||
            (hint.res_name && strcmp(hint.res_name, target_name) == 0)) &&
           (target_class == NULL || strlen(target_class) == 0 ||
            (hint.res_class && strcmp(hint.res_class, target_class) == 0))) {
@@ -203,10 +205,27 @@ static Window retrive_previous_window(Display *dpy, Window root) {
 }
 
 static int print_usage(int rc, char *prog) {
-  fprintf(stderr,
-          "Usage: %s [-v|--verbose] [-h|--help] [-S|--no-store] [-w|--wait-ms] "
-          "WM_NAME [WM_CLASS] [fallback_command...]\n",
-          basename(prog));
+  const char *p = basename(prog);
+  printf("Usage: %s [options] name class [fallback command with parameters]\n"
+         "\n"
+         "Activate X11 window or run command if window is not found.\n"
+         "\n"
+         "Parameters:\n"
+         "  name                 Match window by XClassHint.res_name\n"
+         "  class                Match window by XClassHint.res_class\n"
+         "\n"
+         "Options:\n"
+         "  -v, --verbose        Verbose text output\n"
+         "  -S, --no-store       Do not store current active window id in "
+         "_XWINFOCUS_PREVIOUS_WINDOW\n"
+         "  -w, --wait-ms <ms>   Wait this many milliseconds after the command "
+         "is run and then activate window\n"
+         "  -h, --help           Show this help and exit\n"
+         "\n"
+         "Examples:\n"
+         "  %s -v  # show all windows found\n"
+         "  %s Navigator '' firefox google.com\n",
+         p, p, p);
   return rc;
 }
 
