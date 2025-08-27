@@ -23,6 +23,7 @@
 #define X11_ATOM_NAME "_XWINFOCUS_PREVIOUS_WINDOW"
 
 // (int)(sizeof(unsigned long) * 2)
+#define WINID_FMT "0x%0*lx"
 #define WINID_FMT_LEN (int)(sizeof(unsigned long))
 
 typedef struct {
@@ -60,7 +61,7 @@ static void nsleep_ms(int ms) {
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
     while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
-      warn("nanosleep() failed"); /* retry */
+      /* retry */
     }
   }
 }
@@ -88,7 +89,8 @@ static Window find_window(Display *dpy, Window root, const char *target_name,
   Status status = XGetWindowProperty(dpy, root, net_client_list, 0, (~0L),
                                      False, XA_WINDOW, &ret_type, &ret_format,
                                      &num_items, &bytes_after, &data);
-  if (status != Success || ret_type == None || data == NULL) {
+  // ret_format != 32
+  if (status != Success || ret_type != XA_WINDOW || data == NULL) {
     if (data)
       XFree(data);
     return 0;
@@ -104,7 +106,7 @@ static Window find_window(Display *dpy, Window root, const char *target_name,
         const char *name_body = fringe(hint.res_name, &name_left, &name_right);
         const char *class_body =
             fringe(hint.res_class, &class_left, &class_right);
-        fprintf(stderr, "id: 0x%0*lx\tname: %c%s%c\tclass: %c%s%c\n",
+        fprintf(stderr, "id: " WINID_FMT "\tname: %c%s%c\tclass: %c%s%c\n",
                 WINID_FMT_LEN, (unsigned long)windows[i], name_left, name_body,
                 name_right, class_left, class_body, class_right);
       }
@@ -141,13 +143,15 @@ static Window get_active_window(Display *dpy, Window root) {
   Status status = XGetWindowProperty(
       dpy, root, net_active_window, 0, (~0L), False, AnyPropertyType, &ret_type,
       &ret_format, &num_items, &bytes_after, &data);
-  if (status != Success || ret_type == None || data == NULL) {
+  // ret_format != 32
+  if (status != Success || ret_type != XA_WINDOW || data == NULL) {
     if (data)
       XFree(data);
     return 0;
   }
 
-  Window w = *(Window *)data;
+  Window w = 0;
+  memcpy(&w, data, sizeof w);
   XFree(data);
   return w;
 }
@@ -174,14 +178,13 @@ static void store_previous_window(Display *dpy, Window root, Window w) {
   Atom window = XInternAtom(dpy, X11_ATOM_NAME, False);
   if (window != None) {
     unsigned long data[1] = {w};
-    Status status = XChangeProperty(dpy, root, window, XA_WINDOW, 32,
-                                    PropModeReplace, (unsigned char *)data, 1);
-    if (status == Success)
-      XFlush(dpy);
+    XChangeProperty(dpy, root, window, XA_WINDOW, 32, PropModeReplace,
+                    (unsigned char *)data, 1);
+    XFlush(dpy);
   }
 }
 
-static Window retrive_previous_window(Display *dpy, Window root) {
+static Window retrieve_previous_window(Display *dpy, Window root) {
   Atom window = XInternAtom(dpy, X11_ATOM_NAME, False);
   if (window == None)
     return 0;
@@ -193,15 +196,17 @@ static Window retrive_previous_window(Display *dpy, Window root) {
   Status status =
       XGetWindowProperty(dpy, root, window, 0, 1, False, XA_WINDOW, &ret_type,
                          &ret_format, &num_items, &bytes_after, &data);
-  if (status != Success || ret_type == None || data == NULL) {
+  // ret_format != 32
+  if (status != Success || ret_type != XA_WINDOW || data == NULL) {
     if (data)
       XFree(data);
     return 0;
   }
 
-  Window win = *(Window *)data;
+  Window w = 0;
+  memcpy(&w, data, sizeof w);
   XFree(data);
-  return win;
+  return w;
 }
 
 static int print_usage(int rc, char *prog) {
@@ -283,9 +288,10 @@ int main(int argc, char **argv) {
     if (options.store_previous) {
       Window current = get_active_window(dpy, root);
       if (current == win) {
-        win = retrive_previous_window(dpy, root);
+        win = retrieve_previous_window(dpy, root);
         if (win) {
-          warn("Switching back to 0x%0*lx", WINID_FMT_LEN, (unsigned long)win);
+          warn("Switching back to " WINID_FMT, WINID_FMT_LEN,
+               (unsigned long)win);
         } else
           win = current;
         current = 0;
@@ -328,13 +334,14 @@ int main(int argc, char **argv) {
 
   // parent process
   warn("Forked PID: %d", pid);
+  // open fresh Display after child starts
   if (options.wait_ms > 0 && (dpy = XOpenDisplay(NULL))) {
     warn("Waiting for %d ms", options.wait_ms);
     nsleep_ms(options.wait_ms);
     root = DefaultRootWindow(dpy);
     win = find_window(dpy, root, target_name, target_class);
     if (win) {
-      warn("Activating 0x%0*lx", WINID_FMT_LEN, (unsigned long)win);
+      warn("Activating " WINID_FMT, WINID_FMT_LEN, (unsigned long)win);
       activate_window(dpy, root, win);
     }
     XCloseDisplay(dpy);
