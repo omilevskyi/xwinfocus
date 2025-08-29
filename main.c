@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <libgen.h>
@@ -17,41 +18,62 @@
 #include "xwinfocus.h"
 
 #define PROG "xwinfocus"
+#define VERSION "devel"
+#define COMMIT_HASH "none"
 
 #define NET_ACTIVE_WINDOW "_NET_ACTIVE_WINDOW"
 #define NET_CLIENT_LIST "_NET_CLIENT_LIST"
-#define X11_ATOM_NAME "_XWINFOCUS_PREVIOUS_WINDOW"
+#define X_ATOM_NAME "_XWINFOCUS_PREVIOUS_WINDOW"
 
-// (int)(sizeof(unsigned long) * 2)
+#define XA_WINDOW_FMT32 32
+
+// Strictly speaking, WINID_FMT_LEN should be (int)(sizeof(unsigned long) * 2),
+// but half the size is pretty much enough for output
 #define WINID_FMT "0x%0*lx"
 #define WINID_FMT_LEN (int)(sizeof(unsigned long))
+#define NULL_LABEL "<null>"
+#define EMPTY_LABEL "<empty>"
+#define LEFT_QUOTE "\""
+#define RIGHT_QUOTE "\""
+#define HEADER_UNDERLINE '-'
+
+#define MAX_BUFFER 512
+#define SPACE_LEN 2
 
 typedef struct {
-  int store_previous; /* store current active window id into a property */
-  int verbose;
+  const char *class;   /* XClassHint.res_class */
+  const char *name;    /* XClassHint.res_name */
+  Bool store_previous; /* store current active window id into a property */
+  Bool list;
+  Bool verbose;
   int wait_ms;
 } options_t;
 
-static options_t options = {1, 0, 0};
+static options_t options = {"", "", True, False, False, 0};
 
 static void die(int rc, const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  fprintf(stderr, "%s: ", PROG);
-  vfprintf(stderr, fmt, ap);
-  fprintf(stderr, "\n");
-  va_end(ap);
-  exit(rc);
-}
-
-static void warn(const char *fmt, ...) {
-  if (options.verbose) {
+  if (fmt) {
     va_list ap;
     va_start(ap, fmt);
     fprintf(stderr, "%s: ", PROG);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);
+  }
+  exit(rc);
+}
+
+static void warn(const char *fmt, ...) {
+  if (options.verbose) {
+    fprintf(stderr, "%s: ", PROG);
+    if (fmt) {
+      va_list ap;
+      va_start(ap, fmt);
+      vfprintf(stderr, fmt, ap);
+      va_end(ap);
+    } else
+      fprintf(stderr, NULL_LABEL);
+    fprintf(stderr, "\n");
   }
 }
 
@@ -66,214 +88,313 @@ static void nsleep_ms(int ms) {
   }
 }
 
-static const char *fringe(const char *str, char *left, char *right) {
-  if (str) {
-    *left = *right = '"';
-    return str;
+static inline size_t min(size_t a, size_t b) { return a < b ? a : b; }
+static inline size_t max(size_t a, size_t b) { return a > b ? a : b; }
+
+static size_t fringe_len(const char *str) {
+  if (!str)
+    return 0;
+  size_t result = strlen(str);
+  for (size_t i = 0; i < result && str[i]; ++i)
+    if (isspace(str[i]))
+      return strlen(LEFT_QUOTE) + result + strlen(RIGHT_QUOTE);
+  return result;
+}
+
+static const char *fringe(char *buf, size_t buf_size, const char *str) {
+  if (!buf)
+    return "";
+  if (!str) {
+    snprintf(buf, buf_size, NULL_LABEL);
+    return buf;
   }
-  *left = '<';
-  *right = '>';
-  return "null";
+  if (!str[0]) {
+    snprintf(buf, buf_size, EMPTY_LABEL);
+    return buf;
+  }
+  for (size_t i = 0; i < buf_size && str[i]; ++i)
+    if (isblank(str[i])) {
+      snprintf(buf, buf_size, LEFT_QUOTE "%s" RIGHT_QUOTE, str);
+      return buf;
+    }
+  snprintf(buf, buf_size, "%s", str);
+  return buf;
+}
+
+static void underline(FILE *f, char *whdr, size_t whdr_size, char *name,
+                      size_t name_size, char *class, size_t class_size,
+                      int nspace) {
+  whdr[whdr_size - 1] = name[name_size - 1] = class[class_size - 1] = '\0';
+  fprintf(f, "%s%*s%s%*s%s\n",
+          (char *)memset(whdr, HEADER_UNDERLINE, whdr_size - 1), nspace, "",
+          (char *)memset(name, HEADER_UNDERLINE, name_size - 1), nspace, "",
+          (char *)memset(class, HEADER_UNDERLINE, class_size - 1));
+}
+
+/* fetch property on a window; caller must XFree(*out) */
+static unsigned long get_window_property(Display *dpy, Window w,
+                                         const char *atom_name,
+                                         unsigned char **out) {
+  unsigned long nitems = 0;
+  unsigned char *data = NULL;
+  Atom prop = XInternAtom(dpy, atom_name, True);
+  if (prop != None) {
+    Atom actual_type;
+    int actual_format;
+    unsigned long bytes_after;
+    Status status = XGetWindowProperty(dpy, w, prop, 0L, (~0L), False,
+                                       XA_WINDOW, &actual_type, &actual_format,
+                                       &nitems, &bytes_after, &data);
+    if (status != Success || actual_type != XA_WINDOW ||
+        actual_format != XA_WINDOW_FMT32 || data == NULL) {
+      nitems = 0;
+      if (data)
+        XFree(data);
+      data = NULL;
+    }
+  }
+  if (out)
+    *out = data;
+  return nitems;
 }
 
 static Window find_window(Display *dpy, Window root, const char *target_name,
                           const char *target_class) {
-  Atom net_client_list = XInternAtom(dpy, NET_CLIENT_LIST, True);
-  if (net_client_list == None)
-    return 0;
-
-  Atom ret_type;
-  int ret_format;
-  unsigned long num_items, bytes_after;
+  Window w = 0;
   unsigned char *data = NULL;
-  Status status = XGetWindowProperty(dpy, root, net_client_list, 0, (~0L),
-                                     False, XA_WINDOW, &ret_type, &ret_format,
-                                     &num_items, &bytes_after, &data);
-  // ret_format != 32
-  if (status != Success || ret_type != XA_WINDOW || data == NULL) {
-    if (data)
-      XFree(data);
-    return 0;
-  }
-
-  Window *windows = (Window *)data;
-  for (unsigned long i = 0; i < num_items; i++) {
+  unsigned long n = get_window_property(dpy, root, NET_CLIENT_LIST, &data);
+  if (data) {
+    Window *windows = (Window *)data;
     XClassHint hint;
-    hint.res_name = hint.res_class = NULL;
-    if (XGetClassHint(dpy, windows[i], &hint)) {
-      if (options.verbose) {
-        char name_left, name_right, class_left, class_right;
-        const char *name_body = fringe(hint.res_name, &name_left, &name_right);
-        const char *class_body =
-            fringe(hint.res_class, &class_left, &class_right);
-        fprintf(stderr, "id: " WINID_FMT "\tname: %c%s%c\tclass: %c%s%c\n",
-                WINID_FMT_LEN, (unsigned long)windows[i], name_left, name_body,
-                name_right, class_left, class_body, class_right);
-      }
-      if ((target_name == NULL ||
-           (hint.res_name && strcmp(hint.res_name, target_name) == 0)) &&
-          (target_class == NULL || strlen(target_class) == 0 ||
-           (hint.res_class && strcmp(hint.res_class, target_class) == 0))) {
+    for (unsigned long i = 0; i < n && !w; i++)
+      if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
+        if ((target_name == NULL || strlen(target_name) == 0 ||
+             (hint.res_name && strcmp(hint.res_name, target_name) == 0)) &&
+            (target_class == NULL || strlen(target_class) == 0 ||
+             (hint.res_class && strcmp(hint.res_class, target_class) == 0)))
+          w = windows[i];
         if (hint.res_name)
           XFree(hint.res_name);
         if (hint.res_class)
           XFree(hint.res_class);
-        XFree(data);
-        return windows[i];
       }
-    }
-    if (hint.res_name)
-      XFree(hint.res_name);
-    if (hint.res_class)
-      XFree(hint.res_class);
+    XFree(data);
   }
-  XFree(data);
-  return 0;
+  return w;
 }
-
-static Window get_active_window(Display *dpy, Window root) {
-  Atom net_active_window = XInternAtom(dpy, NET_ACTIVE_WINDOW, True);
-  if (net_active_window == None)
-    return 0;
-
-  Atom ret_type;
-  int ret_format;
-  unsigned long num_items, bytes_after;
+static void list_windows(FILE *f, Display *dpy, Window root) {
   unsigned char *data = NULL;
-  Status status = XGetWindowProperty(
-      dpy, root, net_active_window, 0, (~0L), False, AnyPropertyType, &ret_type,
-      &ret_format, &num_items, &bytes_after, &data);
-  // ret_format != 32
-  if (status != Success || ret_type != XA_WINDOW || data == NULL) {
+  unsigned long n = get_window_property(dpy, root, NET_CLIENT_LIST, &data);
+  if (!n) {
     if (data)
       XFree(data);
-    return 0;
+
+    warn("fallback to using XQueryTree()");
+    Window parent;
+    data = NULL;
+    unsigned int uintn = 0;
+    if (XQueryTree(dpy, root, &root, &parent, (Window **)&data, &uintn) == 0) {
+      warn("XQueryTree() failed");
+      return;
+    }
+    n = (unsigned long)uintn;
   }
 
+  if (data) {
+    if (n) {
+      Window *windows = (Window *)data;
+      XClassHint hint;
+      size_t name_len, class_len;
+      name_len = class_len =
+          max(fringe_len(NULL_LABEL), fringe_len(EMPTY_LABEL));
+
+      for (unsigned long i = 0; i < n; i++)
+        if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
+          if (hint.res_name) {
+            name_len = max(name_len, fringe_len(hint.res_name));
+            XFree(hint.res_name);
+          }
+          if (hint.res_class) {
+            class_len = max(class_len, fringe_len(hint.res_class));
+            XFree(hint.res_class);
+          }
+        }
+
+      name_len = min(name_len, MAX_BUFFER - 1);
+      class_len = min(class_len, MAX_BUFFER - 1);
+
+      char whdr[WINID_FMT_LEN + 2 + 1], name[name_len + 1],
+          class[class_len + 1];
+
+      underline(f, whdr, sizeof whdr, name, name_len + 1, class, class_len + 1,
+                SPACE_LEN);
+
+      fprintf(f, "%-*.*s%*s%-*.*s%*s%-*.*s\n", WINID_FMT_LEN + 2,
+              WINID_FMT_LEN + 2, "Window ID", SPACE_LEN, "", (int)name_len,
+              (int)name_len, "Name", SPACE_LEN, "", (int)class_len,
+              (int)class_len, "Class");
+
+      underline(f, whdr, sizeof whdr, name, name_len + 1, class, class_len + 1,
+                SPACE_LEN);
+
+      for (unsigned long i = 0; i < n; i++)
+        if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
+          fprintf(f, WINID_FMT "%*s%-*.*s%*s%-*.*s\n", WINID_FMT_LEN,
+                  (unsigned long)windows[i], SPACE_LEN, "", (int)name_len,
+                  (int)name_len, fringe(name, sizeof name, hint.res_name),
+                  SPACE_LEN, "", (int)class_len, (int)class_len,
+                  fringe(class, sizeof class, hint.res_class));
+          if (hint.res_name)
+            XFree(hint.res_name);
+          if (hint.res_class)
+            XFree(hint.res_class);
+        }
+
+      underline(f, whdr, sizeof whdr, name, name_len + 1, class, class_len + 1,
+                SPACE_LEN);
+    }
+    XFree(data);
+  }
+}
+
+/*OK*/
+static Window get_active_window(Display *dpy, Window root) {
   Window w = 0;
-  memcpy(&w, data, sizeof w);
-  XFree(data);
+  unsigned char *data = NULL;
+  unsigned long n = get_window_property(dpy, root, NET_ACTIVE_WINDOW, &data);
+  if (data) {
+    if (n)
+      memcpy(&w, data, sizeof w);
+    XFree(data);
+  }
   return w;
 }
 
-static void activate_window(Display *dpy, Window root, Window w) {
-  Atom net_active_window = XInternAtom(dpy, NET_ACTIVE_WINDOW, False);
-  if (net_active_window != None) {
-    XEvent event;
-    memset(&event, 0, sizeof(event));
-    event.xclient.type = ClientMessage;
-    event.xclient.window = w;
-    event.xclient.message_type = net_active_window;
-    event.xclient.format = 32;
-    event.xclient.data.l[0] = 2; /* 1 = application, 2 = pager */
-    event.xclient.data.l[1] = CurrentTime;
-    long mask = SubstructureRedirectMask | SubstructureNotifyMask;
-    Status status = XSendEvent(dpy, root, False, mask, &event);
-    if (status == Success)
-      XFlush(dpy);
+/*OK*/
+static Window retrieve_previous_window(Display *dpy, Window root) {
+  Window w = 0;
+  unsigned char *data = NULL;
+  unsigned long n = get_window_property(dpy, root, X_ATOM_NAME, &data);
+  if (data) {
+    if (n)
+      memcpy(&w, data, sizeof w);
+    XFree(data);
   }
+  return w;
 }
 
+/*OK*/
 static void store_previous_window(Display *dpy, Window root, Window w) {
-  Atom window = XInternAtom(dpy, X11_ATOM_NAME, False);
+  Atom window = XInternAtom(dpy, X_ATOM_NAME, False);
   if (window != None) {
     unsigned long data[1] = {w};
-    XChangeProperty(dpy, root, window, XA_WINDOW, 32, PropModeReplace,
-                    (unsigned char *)data, 1);
+    XChangeProperty(dpy, root, window, XA_WINDOW, XA_WINDOW_FMT32,
+                    PropModeReplace, (unsigned char *)data,
+                    sizeof data / sizeof(unsigned long));
     XFlush(dpy);
   }
 }
 
-static Window retrieve_previous_window(Display *dpy, Window root) {
-  Atom window = XInternAtom(dpy, X11_ATOM_NAME, False);
-  if (window == None)
-    return 0;
-
-  Atom ret_type;
-  int ret_format;
-  unsigned long num_items, bytes_after;
-  unsigned char *data = NULL;
-  Status status =
-      XGetWindowProperty(dpy, root, window, 0, 1, False, XA_WINDOW, &ret_type,
-                         &ret_format, &num_items, &bytes_after, &data);
-  // ret_format != 32
-  if (status != Success || ret_type != XA_WINDOW || data == NULL) {
-    if (data)
-      XFree(data);
-    return 0;
+/*OK*/
+static void activate_window(Display *dpy, Window root, Window w) {
+  Atom window = XInternAtom(dpy, NET_ACTIVE_WINDOW, False);
+  if (window != None) {
+    XEvent event;
+    memset(&event, 0, sizeof event);
+    event.xclient.type = ClientMessage;
+    event.xclient.window = w;
+    event.xclient.message_type = window;
+    event.xclient.format = XA_WINDOW_FMT32;
+    event.xclient.data.l[0] = 2; /* 1 = application, 2 = pager */
+    event.xclient.data.l[1] = CurrentTime;
+    long mask = SubstructureRedirectMask | SubstructureNotifyMask;
+    if (XSendEvent(dpy, root, False, mask, &event) == Success)
+      XFlush(dpy);
   }
-
-  Window w = 0;
-  memcpy(&w, data, sizeof w);
-  XFree(data);
-  return w;
 }
 
-static int print_usage(int rc, char *prog) {
-  const char *p = basename(prog);
-  printf("Usage: %s [options] name class [fallback command with parameters]\n"
+/*OK*/
+static int print_version(int rc) {
+  printf("%s %s (%s)\n", PROG, VERSION, COMMIT_HASH);
+  return rc;
+}
+
+static int print_usage(int rc) {
+  printf("Usage: %s [options] [fallback command with parameters]\n"
          "\n"
          "Activate X11 window or run command if window is not found.\n"
          "\n"
-         "Parameters:\n"
-         "  name                 Match window by XClassHint.res_name\n"
-         "  class                Match window by XClassHint.res_class\n"
-         "\n"
          "Options:\n"
+         "  -c, --class          Match window by XClassHint.res_class\n"
+         "  -n, --name           Match window by XClassHint.res_name\n"
+         "  -l, --list           List all windows\n"
+         "  -S, --no-store       Do not store current active window id "
+         "in " X_ATOM_NAME "\n"
          "  -v, --verbose        Verbose text output\n"
-         "  -S, --no-store       Do not store current active window id in "
-         "_XWINFOCUS_PREVIOUS_WINDOW\n"
-         "  -w, --wait-ms <ms>   Wait this many milliseconds after the command "
-         "is run and then activate window\n"
+         "  -w, --wait-ms <ms>   Wait this many milliseconds after fallback "
+         "command is run and then activate window\n"
+         "      --version        Show version and exit\n"
          "  -h, --help           Show this help and exit\n"
          "\n"
          "Examples:\n"
-         "  %s -v  # show all windows found\n"
+         "  %s -l  # show all windows found\n"
          "  %s Navigator '' firefox google.com\n",
-         p, p, p);
+         PROG, PROG, PROG);
   return rc;
 }
 
 int main(int argc, char **argv) {
   int opt;
-  int opt_index = 0;
+  int opt_idx = 0;
   static struct option long_opts[] = {
       {"help", no_argument, 0, 'h'},
-      // {"class", required_argument, 0, 'c'},
-      // {"name", required_argument, 0, 'n'},
+      {"class", required_argument, 0, 'c'},
+      {"list", no_argument, 0, 'l'},
+      {"name", required_argument, 0, 'n'},
       {"no-store", no_argument, 0, 'S'},
       {"verbose", no_argument, 0, 'v'},
+      {"version", no_argument, 0, 1},
       {"wait-ms", required_argument, 0, 'w'},
       {0, 0, 0, 0},
   };
 
-  while ((opt = getopt_long(argc, argv, "hSvw:", long_opts, &opt_index)) !=
+  if (argc == 1)
+    return print_usage(EXIT_SUCCESS);
+
+  while ((opt = getopt_long(argc, argv, "hc:ln:Svw:", long_opts, &opt_idx)) !=
          -1) {
     switch (opt) {
-    case 'v':
-      options.verbose = 1;
+    case 'h':
+      return print_usage(EXIT_SUCCESS);
+    case 'c':
+      if (optarg)
+        options.class = optarg;
+      break;
+    case 'l':
+      options.list = True;
+      break;
+    case 'n':
+      if (optarg)
+        options.name = optarg;
       break;
     case 'S':
-      options.store_previous = 0;
+      options.store_previous = False;
+      break;
+    case 'v':
+      options.verbose = True;
       break;
     case 'w':
       options.wait_ms = atoi(optarg);
       if (options.wait_ms < 0)
         die(202, "invalid value for --wait-ms: %s\n", optarg);
       break;
-    case 'h':
-      return print_usage(0, argv[0]);
+    case 1: /* --version */
+      return print_version(EXIT_SUCCESS);
     default:
-      return print_usage(201, argv[0]);
+      warn("invalid option");
+      return print_usage(201);
     }
   }
-
-  // fprintf(stderr, "argc=%d, optind=%d\n", argc, optind);
-  if (argc == 1)
-    return print_usage(0, argv[0]);
-
-  const char *target_name = optind < argc ? argv[optind] : "";
-  const char *target_class = optind + 1 < argc ? argv[optind + 1] : "";
 
   Display *dpy = XOpenDisplay(NULL);
   if (!dpy) {
@@ -283,16 +404,23 @@ int main(int argc, char **argv) {
   }
 
   Window root = DefaultRootWindow(dpy);
-  Window win = find_window(dpy, root, target_name, target_class);
+
+  if (options.list) {
+    list_windows(stdout, dpy, root);
+    XCloseDisplay(dpy);
+    return EXIT_SUCCESS;
+  }
+
+  Window win = find_window(dpy, root, options.name, options.class);
   if (win) {
     if (options.store_previous) {
       Window current = get_active_window(dpy, root);
       if (current == win) {
         win = retrieve_previous_window(dpy, root);
-        if (win) {
+        if (win)
           warn("Switching back to " WINID_FMT, WINID_FMT_LEN,
                (unsigned long)win);
-        } else
+        else
           win = current;
         current = 0;
       }
@@ -300,24 +428,22 @@ int main(int argc, char **argv) {
     }
     activate_window(dpy, root, win);
     XCloseDisplay(dpy);
-    return 0;
+    return EXIT_SUCCESS;
   }
 
   XCloseDisplay(dpy);
 
-  if (argc == 2 && options.verbose)
-    return 0;
+  warn("%s.%s is not found", strlen(options.name) > 0 ? options.name : "\"\"",
+       strlen(options.class) > 0 ? options.class : "\"\"");
 
-  warn("%s.%s is not found", strlen(target_name) > 0 ? target_name : "\"\"",
-       strlen(target_class) > 0 ? target_class : "\"\"");
-
-  if (optind + 2 >= argc) {
-    return 204;
+  if (optind >= argc) {
+    warn("fallback command is not found");
+    die(204, NULL);
   }
 
   if (options.verbose) {
     fprintf(stderr, "%s: executing:", PROG);
-    for (int i = optind + 2; i < argc; i++) {
+    for (int i = optind; i < argc; i++) {
       fprintf(stderr, " %s", argv[i]);
     }
     fprintf(stderr, "\n");
@@ -328,24 +454,28 @@ int main(int argc, char **argv) {
     die(205, "fork() failed: %s", strerror(errno));
 
   if (!pid) { // child process
-    execvp(argv[optind + 2], &argv[optind + 2]);
+    execvp(argv[optind], &argv[optind]);
     die(206, "execvp() failed: %s", strerror(errno));
   }
 
   // parent process
   warn("Forked PID: %d", pid);
+
   // open fresh Display after child starts
   if (options.wait_ms > 0 && (dpy = XOpenDisplay(NULL))) {
     warn("Waiting for %d ms", options.wait_ms);
     nsleep_ms(options.wait_ms);
     root = DefaultRootWindow(dpy);
-    win = find_window(dpy, root, target_name, target_class);
+    win = find_window(dpy, root, options.name, options.class);
     if (win) {
       warn("Activating " WINID_FMT, WINID_FMT_LEN, (unsigned long)win);
       activate_window(dpy, root, win);
-    }
+    } else
+      warn("%s.%s is not found",
+           strlen(options.name) > 0 ? options.name : "\"\"",
+           strlen(options.class) > 0 ? options.class : "\"\"");
     XCloseDisplay(dpy);
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
