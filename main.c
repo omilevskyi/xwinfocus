@@ -18,8 +18,14 @@
 #include "xwinfocus.h"
 
 #define PROG "xwinfocus"
+
+#ifndef VERSION
 #define VERSION "devel"
+#endif
+
+#ifndef COMMIT_HASH
 #define COMMIT_HASH "none"
+#endif
 
 #define NET_ACTIVE_WINDOW "_NET_ACTIVE_WINDOW"
 #define NET_CLIENT_LIST "_NET_CLIENT_LIST"
