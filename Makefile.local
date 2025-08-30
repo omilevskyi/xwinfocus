@@ -1,5 +1,11 @@
 SLEEP_SEC?=	7
 
+install-home: .PHONY
+	${INSTALL} -s ${PROG} ${HOME}/bin
+
+cppcheck: .PHONY
+	cppcheck --enable=all --inconclusive --check-level=exhaustive --error-exitcode=1 ${PROG}.c || :
+
 pr: .PHONY push do-pr sleep watch
 do-pr: .PHONY
 	gh pr create --fill

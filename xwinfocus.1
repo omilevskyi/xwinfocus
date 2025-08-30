@@ -1,0 +1,44 @@
+.TH xwinfocus 1 "August 2025" "xwinfocus" "User Commands"
+.SH NAME
+xwinfocus \- activate or list X11 windows, or run fallback command
+.SH SYNOPSIS
+.B xwinfocus
+[options] [fallback command]
+.SH DESCRIPTION
+xwinfocus activates an X11 window by name or class. If no matching window is found, it can run a fallback command and optionally activate the window after a delay.
+.SH OPTIONS
+.TP
+.B -c, --class
+Match window by XClassHint.res_class
+.TP
+.B -n, --name
+Match window by XClassHint.res_name
+.TP
+.B -S, --no-store
+Do not store current active window id in _XWINFOCUS_PREVIOUS_WINDOW
+.TP
+.B -v, --verbose
+Verbose text output
+.TP
+.B -w, --wait-ms <ms>
+Wait this many milliseconds after the command is run and then activate window
+.TP
+.B --version
+Show version and exit
+.TP
+.B -h, --help
+Show this help and exit
+.SH EXAMPLES
+List all windows:
+.RS
+.NF
+xwinfocus --list
+.FI
+.RE
+.PP
+Activate Chromium window or launch it if not found:
+.RS
+.NF
+xwinfocus -n chromium-browser -- chrome --no-proxy-server google.com
+.FI
+.RE

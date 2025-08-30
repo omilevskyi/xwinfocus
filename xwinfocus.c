@@ -1,4 +1,7 @@
+#if defined(NO_LIST_WINDOWS) ||                                                \
+    (!defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__NetBSD__))
 #define _POSIX_C_SOURCE 200809L
+#endif
 
 #include <ctype.h>
 #include <errno.h>
@@ -16,44 +19,6 @@
 #include <X11/Xutil.h>
 
 #include "xwinfocus.h"
-
-#define PROG "xwinfocus"
-
-#ifndef VERSION
-#define VERSION "devel"
-#endif
-
-#ifndef COMMIT_HASH
-#define COMMIT_HASH "none"
-#endif
-
-#define NET_ACTIVE_WINDOW "_NET_ACTIVE_WINDOW"
-#define NET_CLIENT_LIST "_NET_CLIENT_LIST"
-#define X_ATOM_NAME "_XWINFOCUS_PREVIOUS_WINDOW"
-
-#define XA_WINDOW_FMT32 32
-
-// Strictly speaking, WINID_FMT_LEN should be (int)(sizeof(unsigned long) * 2),
-// but half the size is pretty much enough for output
-#define WINID_FMT "0x%0*lx"
-#define WINID_FMT_LEN (int)(sizeof(unsigned long))
-#define NULL_LABEL "<null>"
-#define EMPTY_LABEL "<empty>"
-#define LEFT_QUOTE "\""
-#define RIGHT_QUOTE "\""
-#define HEADER_UNDERLINE '-'
-
-#define MAX_BUFFER 512
-#define SPACE_LEN 2
-
-typedef struct {
-  const char *class;   /* XClassHint.res_class */
-  const char *name;    /* XClassHint.res_name */
-  Bool store_previous; /* store current active window id into a property */
-  Bool list;
-  Bool verbose;
-  int wait_ms;
-} options_t;
 
 static options_t options = {"", "", True, False, False, 0};
 
@@ -94,37 +59,54 @@ static void nsleep_ms(int ms) {
   }
 }
 
+#ifndef NO_LIST_WINDOWS
 static inline size_t min(size_t a, size_t b) { return a < b ? a : b; }
 static inline size_t max(size_t a, size_t b) { return a > b ? a : b; }
 
-static size_t fringe_len(const char *str) {
-  if (!str)
-    return 0;
-  size_t result = strlen(str);
-  for (size_t i = 0; i < result && str[i]; ++i)
-    if (isspace(str[i]))
-      return strlen(LEFT_QUOTE) + result + strlen(RIGHT_QUOTE);
-  return result;
-}
-
-static const char *fringe(char *buf, size_t buf_size, const char *str) {
-  if (!buf)
-    return "";
+static size_t fringe(const char *str, char *buf, size_t buf_size) {
   if (!str) {
-    snprintf(buf, buf_size, NULL_LABEL);
-    return buf;
+    if (buf)
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+      strlcpy(buf, NULL_LABEL, buf_size);
+#else
+      snprintf(buf, buf_size, "%s", NULL_LABEL);
+#endif
+    return 0;
   }
-  if (!str[0]) {
-    snprintf(buf, buf_size, EMPTY_LABEL);
-    return buf;
+
+  if (!*str) {
+    if (buf)
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+      strlcpy(buf, EMPTY_LABEL, buf_size);
+#else
+      snprintf(buf, buf_size, "%s", EMPTY_LABEL);
+#endif
+    return 0;
   }
-  for (size_t i = 0; i < buf_size && str[i]; ++i)
+
+  size_t result = strlen(str);
+  for (size_t i = 0; i < result; ++i)
     if (isblank(str[i])) {
-      snprintf(buf, buf_size, LEFT_QUOTE "%s" RIGHT_QUOTE, str);
-      return buf;
+      if (buf) {
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+        strlcpy(buf, LEFT_QUOTE, buf_size);
+        strlcat(buf, str, buf_size);
+        strlcat(buf, RIGHT_QUOTE, buf_size);
+#else
+        snprintf(buf, buf_size, LEFT_QUOTE "%s" RIGHT_QUOTE, str);
+#endif
+      }
+      return sizeof LEFT_QUOTE - 1 + result + sizeof RIGHT_QUOTE - 1;
     }
-  snprintf(buf, buf_size, "%s", str);
-  return buf;
+
+  if (buf)
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    strlcpy(buf, str, buf_size);
+#else
+    snprintf(buf, buf_size, "%s", str);
+#endif
+
+  return result;
 }
 
 static void underline(FILE *f, char *whdr, size_t whdr_size, char *name,
@@ -136,11 +118,12 @@ static void underline(FILE *f, char *whdr, size_t whdr_size, char *name,
           (char *)memset(name, HEADER_UNDERLINE, name_size - 1), nspace, "",
           (char *)memset(class, HEADER_UNDERLINE, class_size - 1));
 }
+#endif
 
 /* fetch property on a window; caller must XFree(*out) */
-static unsigned long get_window_property(Display *dpy, Window w,
-                                         const char *atom_name,
-                                         unsigned char **out) {
+static unsigned long window_property(Display *dpy, Window w,
+                                     const char *atom_name,
+                                     unsigned char **out) {
   unsigned long nitems = 0;
   unsigned char *data = NULL;
   Atom prop = XInternAtom(dpy, atom_name, True);
@@ -168,15 +151,15 @@ static Window find_window(Display *dpy, Window root, const char *target_name,
                           const char *target_class) {
   Window w = 0;
   unsigned char *data = NULL;
-  unsigned long n = get_window_property(dpy, root, NET_CLIENT_LIST, &data);
+  unsigned long n = window_property(dpy, root, NET_CLIENT_LIST, &data);
   if (data) {
     Window *windows = (Window *)data;
     XClassHint hint;
     for (unsigned long i = 0; i < n && !w; i++)
       if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
-        if ((target_name == NULL || strlen(target_name) == 0 ||
+        if ((target_name == NULL || *target_name == '\0' ||
              (hint.res_name && strcmp(hint.res_name, target_name) == 0)) &&
-            (target_class == NULL || strlen(target_class) == 0 ||
+            (target_class == NULL || *target_class == '\0' ||
              (hint.res_class && strcmp(hint.res_class, target_class) == 0)))
           w = windows[i];
         if (hint.res_name)
@@ -188,9 +171,11 @@ static Window find_window(Display *dpy, Window root, const char *target_name,
   }
   return w;
 }
+
+#ifndef NO_LIST_WINDOWS
 static void list_windows(FILE *f, Display *dpy, Window root) {
   unsigned char *data = NULL;
-  unsigned long n = get_window_property(dpy, root, NET_CLIENT_LIST, &data);
+  unsigned long n = window_property(dpy, root, NET_CLIENT_LIST, &data);
   if (!n) {
     if (data)
       XFree(data);
@@ -212,16 +197,16 @@ static void list_windows(FILE *f, Display *dpy, Window root) {
       XClassHint hint;
       size_t name_len, class_len;
       name_len = class_len =
-          max(fringe_len(NULL_LABEL), fringe_len(EMPTY_LABEL));
+          max(fringe(NULL_LABEL, NULL, 0), fringe(EMPTY_LABEL, NULL, 0));
 
       for (unsigned long i = 0; i < n; i++)
         if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
           if (hint.res_name) {
-            name_len = max(name_len, fringe_len(hint.res_name));
+            name_len = max(name_len, fringe(hint.res_name, NULL, 0));
             XFree(hint.res_name);
           }
           if (hint.res_class) {
-            class_len = max(class_len, fringe_len(hint.res_class));
+            class_len = max(class_len, fringe(hint.res_class, NULL, 0));
             XFree(hint.res_class);
           }
         }
@@ -232,7 +217,7 @@ static void list_windows(FILE *f, Display *dpy, Window root) {
       char whdr[WINID_FMT_LEN + 2 + 1], name[name_len + 1],
           class[class_len + 1];
 
-      underline(f, whdr, sizeof whdr, name, name_len + 1, class, class_len + 1,
+      underline(f, whdr, sizeof whdr, name, sizeof name, class, sizeof class,
                 SPACE_LEN);
 
       fprintf(f, "%-*.*s%*s%-*.*s%*s%-*.*s\n", WINID_FMT_LEN + 2,
@@ -240,34 +225,35 @@ static void list_windows(FILE *f, Display *dpy, Window root) {
               (int)name_len, "Name", SPACE_LEN, "", (int)class_len,
               (int)class_len, "Class");
 
-      underline(f, whdr, sizeof whdr, name, name_len + 1, class, class_len + 1,
+      underline(f, whdr, sizeof whdr, name, sizeof name, class, sizeof class,
                 SPACE_LEN);
 
       for (unsigned long i = 0; i < n; i++)
         if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
+          fringe(hint.res_name, name, sizeof name);
+          fringe(hint.res_class, class, sizeof class);
           fprintf(f, WINID_FMT "%*s%-*.*s%*s%-*.*s\n", WINID_FMT_LEN,
                   (unsigned long)windows[i], SPACE_LEN, "", (int)name_len,
-                  (int)name_len, fringe(name, sizeof name, hint.res_name),
-                  SPACE_LEN, "", (int)class_len, (int)class_len,
-                  fringe(class, sizeof class, hint.res_class));
+                  (int)name_len, name, SPACE_LEN, "", (int)class_len,
+                  (int)class_len, class);
           if (hint.res_name)
             XFree(hint.res_name);
           if (hint.res_class)
             XFree(hint.res_class);
         }
 
-      underline(f, whdr, sizeof whdr, name, name_len + 1, class, class_len + 1,
+      underline(f, whdr, sizeof whdr, name, sizeof name, class, sizeof class,
                 SPACE_LEN);
     }
     XFree(data);
   }
 }
+#endif
 
-/*OK*/
-static Window get_active_window(Display *dpy, Window root) {
+static Window active_window(Display *dpy, Window root) {
   Window w = 0;
   unsigned char *data = NULL;
-  unsigned long n = get_window_property(dpy, root, NET_ACTIVE_WINDOW, &data);
+  unsigned long n = window_property(dpy, root, NET_ACTIVE_WINDOW, &data);
   if (data) {
     if (n)
       memcpy(&w, data, sizeof w);
@@ -276,11 +262,10 @@ static Window get_active_window(Display *dpy, Window root) {
   return w;
 }
 
-/*OK*/
 static Window retrieve_previous_window(Display *dpy, Window root) {
   Window w = 0;
   unsigned char *data = NULL;
-  unsigned long n = get_window_property(dpy, root, X_ATOM_NAME, &data);
+  unsigned long n = window_property(dpy, root, X_ATOM_NAME, &data);
   if (data) {
     if (n)
       memcpy(&w, data, sizeof w);
@@ -289,19 +274,17 @@ static Window retrieve_previous_window(Display *dpy, Window root) {
   return w;
 }
 
-/*OK*/
 static void store_previous_window(Display *dpy, Window root, Window w) {
   Atom window = XInternAtom(dpy, X_ATOM_NAME, False);
   if (window != None) {
     unsigned long data[1] = {w};
     XChangeProperty(dpy, root, window, XA_WINDOW, XA_WINDOW_FMT32,
                     PropModeReplace, (unsigned char *)data,
-                    sizeof data / sizeof(unsigned long));
+                    sizeof data / sizeof *data); // / sizeof(unsigned long)
     XFlush(dpy);
   }
 }
 
-/*OK*/
 static void activate_window(Display *dpy, Window root, Window w) {
   Atom window = XInternAtom(dpy, NET_ACTIVE_WINDOW, False);
   if (window != None) {
@@ -319,7 +302,6 @@ static void activate_window(Display *dpy, Window root, Window w) {
   }
 }
 
-/*OK*/
 static int print_version(int rc) {
   printf("%s %s (%s)\n", PROG, VERSION, COMMIT_HASH);
   return rc;
@@ -333,7 +315,9 @@ static int print_usage(int rc) {
          "Options:\n"
          "  -c, --class          Match window by XClassHint.res_class\n"
          "  -n, --name           Match window by XClassHint.res_name\n"
+#ifndef NO_LIST_WINDOWS
          "  -l, --list           List all windows\n"
+#endif
          "  -S, --no-store       Do not store current active window id "
          "in " X_ATOM_NAME "\n"
          "  -v, --verbose        Verbose text output\n"
@@ -343,31 +327,72 @@ static int print_usage(int rc) {
          "  -h, --help           Show this help and exit\n"
          "\n"
          "Examples:\n"
-         "  %s -l  # show all windows found\n"
-         "  %s Navigator '' firefox google.com\n",
-         PROG, PROG, PROG);
+#ifndef NO_LIST_WINDOWS
+         "  %s --list\t# show all windows found\n"
+#endif
+         "  %s -n chromium-browser -- chrome --no-proxy-server google.com\n",
+#ifndef NO_LIST_WINDOWS
+         PROG,
+#endif
+         PROG, PROG);
   return rc;
 }
 
+static size_t option_string(const struct option *opts, char *dst,
+                            size_t dst_size) {
+  size_t pos = 0;
+  dst_size = dst ? dst_size - 1 : (size_t)(-1L);
+  for (int i = 0; opts[i].name != NULL && pos < dst_size; ++i)
+    if (opts[i].val > 1) { // only short forms are processed
+      if (dst)
+        dst[pos] = opts[i].val;
+      pos++;
+      if (pos < dst_size)
+        switch (opts[i].has_arg) {
+        case required_argument:
+          if (dst)
+            dst[pos] = ':';
+          pos++;
+          break;
+        case optional_argument:
+          if (dst)
+            dst[pos] = ':';
+          pos++;
+          if (pos < dst_size) {
+            if (dst)
+              dst[pos] = ':';
+            pos++;
+          }
+        }
+    }
+  if (dst)
+    dst[pos] = '\0';
+  return pos;
+}
+
 int main(int argc, char **argv) {
-  int opt;
-  int opt_idx = 0;
   static struct option long_opts[] = {
       {"help", no_argument, 0, 'h'},
       {"class", required_argument, 0, 'c'},
+#ifndef NO_LIST_WINDOWS
       {"list", no_argument, 0, 'l'},
+#endif
       {"name", required_argument, 0, 'n'},
       {"no-store", no_argument, 0, 'S'},
       {"verbose", no_argument, 0, 'v'},
       {"version", no_argument, 0, 1},
       {"wait-ms", required_argument, 0, 'w'},
-      {0, 0, 0, 0},
+      {NULL, 0, NULL, 0},
   };
 
-  if (argc == 1)
+  if (argc < 2)
     return print_usage(EXIT_SUCCESS);
 
-  while ((opt = getopt_long(argc, argv, "hc:ln:Svw:", long_opts, &opt_idx)) !=
+  int opt, opt_idx = 0;
+  char opt_string[option_string(long_opts, NULL, 0) + 1];
+  option_string(long_opts, opt_string, sizeof opt_string); // "hc:ln:Svw:"
+
+  while ((opt = getopt_long(argc, argv, opt_string, long_opts, &opt_idx)) !=
          -1) {
     switch (opt) {
     case 'h':
@@ -376,9 +401,11 @@ int main(int argc, char **argv) {
       if (optarg)
         options.class = optarg;
       break;
+#ifndef NO_LIST_WINDOWS
     case 'l':
       options.list = True;
       break;
+#endif
     case 'n':
       if (optarg)
         options.name = optarg;
@@ -402,25 +429,26 @@ int main(int argc, char **argv) {
     }
   }
 
-  Display *dpy = XOpenDisplay(NULL);
-  if (!dpy) {
-    const char *display_name = getenv("DISPLAY");
-    die(203, "cannot open X display%s%s", display_name ? " " : "",
-        display_name ? display_name : "");
-  }
+  const char *display = getenv(DISPLAY_ENV_VAR);
+  Display *dpy = XOpenDisplay(display);
+  if (!dpy)
+    die(203, "cannot open X display%s%s", display ? " " : "",
+        display ? display : "");
 
-  Window root = DefaultRootWindow(dpy);
+  Window root = XDefaultRootWindow(dpy);
 
+#ifndef NO_LIST_WINDOWS
   if (options.list) {
     list_windows(stdout, dpy, root);
     XCloseDisplay(dpy);
     return EXIT_SUCCESS;
   }
+#endif
 
   Window win = find_window(dpy, root, options.name, options.class);
   if (win) {
     if (options.store_previous) {
-      Window current = get_active_window(dpy, root);
+      Window current = active_window(dpy, root);
       if (current == win) {
         win = retrieve_previous_window(dpy, root);
         if (win)
@@ -439,8 +467,8 @@ int main(int argc, char **argv) {
 
   XCloseDisplay(dpy);
 
-  warn("%s.%s is not found", strlen(options.name) > 0 ? options.name : "\"\"",
-       strlen(options.class) > 0 ? options.class : "\"\"");
+  warn("%s.%s is not found", *options.name ? options.name : "\"\"",
+       *options.class ? options.class : "\"\"");
 
   if (optind >= argc) {
     warn("fallback command is not found");
@@ -449,9 +477,8 @@ int main(int argc, char **argv) {
 
   if (options.verbose) {
     fprintf(stderr, "%s: executing:", PROG);
-    for (int i = optind; i < argc; i++) {
+    for (int i = optind; i < argc; i++)
       fprintf(stderr, " %s", argv[i]);
-    }
     fprintf(stderr, "\n");
   }
 
@@ -468,18 +495,17 @@ int main(int argc, char **argv) {
   warn("Forked PID: %d", pid);
 
   // open fresh Display after child starts
-  if (options.wait_ms > 0 && (dpy = XOpenDisplay(NULL))) {
+  if (options.wait_ms > 0 && (dpy = XOpenDisplay(display))) {
     warn("Waiting for %d ms", options.wait_ms);
     nsleep_ms(options.wait_ms);
-    root = DefaultRootWindow(dpy);
+    root = XDefaultRootWindow(dpy);
     win = find_window(dpy, root, options.name, options.class);
     if (win) {
       warn("Activating " WINID_FMT, WINID_FMT_LEN, (unsigned long)win);
       activate_window(dpy, root, win);
     } else
-      warn("%s.%s is not found",
-           strlen(options.name) > 0 ? options.name : "\"\"",
-           strlen(options.class) > 0 ? options.class : "\"\"");
+      warn("%s.%s is not found", *options.name ? options.name : "\"\"",
+           *options.class ? options.class : "\"\"");
     XCloseDisplay(dpy);
   }
 
