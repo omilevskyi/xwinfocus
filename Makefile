@@ -4,11 +4,13 @@ MAN=
 
 LOCALBASE?=	/usr/local
 
-#CC=		${LOCALBASE}/bin/clang21
-CFLAGS:=	-O3 -ffast-math -flto=full ${CFLAGS:N-O*}
+#CC?=		${LOCALBASE}/bin/clang21
+CFLAGS:=	-O3 -ffast-math -flto=full -funified-lto ${CFLAGS:N-O*}
 CFLAGS+=	-I${LOCALBASE}/include
 #CFLAGS+=	-g
+LDFLAGS+=	-O3 -ffast-math -flto=full
 LDFLAGS+=	-Wl,-O3
+LDFLAGS+=	-Wl,--lto=full
 LDFLAGS+=	-Wl,--as-needed
 LDFLAGS+=	-Wl,--sort-common
 LDFLAGS+=	-L${LOCALBASE}/lib
