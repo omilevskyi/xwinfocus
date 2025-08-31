@@ -3,7 +3,7 @@ name: Check version
 on:
   push:
     branches-ignore:
-      - "main"
+      - main
 jobs:
   check-version:
     runs-on: ubuntu-latest
@@ -11,12 +11,14 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
+          fetch-depth: 0 # Shallow clones should be disabled so we can bump on previous tags
+          fetch-tags: "true" # This should negate the need for fetch-depth 0 but it seems both are required
           show-progress: "false"
       - name: Get next version
         run: |
-          msg=$(git log -1 --format=%B | head -1)
+          msg=$(git --no-pager log --no-color -1 --format=%B | head -1)
           if echo "${msg}" | grep --quiet '^fix[^[:space:]:]*:'; then
             version_bump=patch
           elif echo "${msg}" | grep --quiet '^feat[^[:space:]:]*:'; then
@@ -26,7 +28,7 @@ jobs:
           else
             exit 0
           fi
-          recent_version=$(git tag --sort -version:refname | sed --silent --regexp-extended 's/.*(v[[:digit:].]+)$/\1/p;q')
+          recent_version=$(git --no-pager tag --no-color --sort -version:refname | sed --silent --regexp-extended 's/.*(v[[:digit:].]+)$/\1/p;q')
           next_version=$(curl --silent https://raw.githubusercontent.com/fsaintjacques/semver-tool/master/src/semver |
             bash -s bump ${version_bump} ${recent_version:-v0.0.0})
           test -n "${next_version}" || exit 201
