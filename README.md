@@ -1,8 +1,10 @@
 # xwinfocus
 
-![Build](https://github.com/omilevskyi/xwinfocus/actions/workflows/build.yml/badge.svg?branch=main)
-![Cppcheck](https://github.com/omilevskyi/xwinfocus/actions/workflows/ci.yml/badge.svg?branch=main)
-![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)
+[![Release](https://img.shields.io/github/release/omilevskyi/xwinfocus.svg)](https://github.com/omilevskyi/xwinfocus/releases/latest)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Build](https://github.com/omilevskyi/xwinfocus/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/omilevskyi/xwinfocus/actions/workflows/build.yml)
+[![Cppcheck](https://github.com/omilevskyi/xwinfocus/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/omilevskyi/xwinfocus/actions/workflows/ci.yml)
+[![Powered By: nFPM](https://img.shields.io/badge/Powered%20by-nFPM-green.svg)](https://github.com/goreleaser/nfpm)
 
 Activate or list X11 windows, or run fallback command
 

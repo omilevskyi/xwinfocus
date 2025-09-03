@@ -11,11 +11,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
-          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
+          fetch-depth: 0
           show-progress: "false"
 
       - name: Install dependencies
@@ -47,11 +52,15 @@ jobs:
       - name: Run test_option_string
         run: ./test_option_string
 
-      # - name: Run cppcheck
-      #   run: |
-      #     cppcheck \
-      #       --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
-      #       --language=c --std=c99 --platform=unix64 \
-      #       --suppress=missingIncludeSystem \
-      #       --suppress=checkersReport \
-      #       $(find . -name '*.c' -not -name 'test_*' -type f)
+      - name: Clean up
+        run: git --no-pager clean --force -d -x
+
+      # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
+      - name: Release
+        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        with:
+          git-user: cocogitto
+          git-user-email: cocogitto@github.com
+          check: false
+          check-latest-tag-only: true
+          release: true
