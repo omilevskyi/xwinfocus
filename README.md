@@ -1,5 +1,11 @@
 # xwinfocus
 
+!Build
+!Cppcheck
+!Coverage
+!License
+!Quality
+
 Activate or list X11 windows, or run fallback command
 
 This is a tiny tool written alongside AI that does almost the same as the following script:
