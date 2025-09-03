@@ -1,24 +1,18 @@
-#if defined(NO_LIST_WINDOWS) ||                                                \
-    (!defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__NetBSD__))
-#define _POSIX_C_SOURCE 200809L
-#endif
+#include "include/xwinfocus.h"
 
-#include <ctype.h>
 #include <errno.h>
-#include <getopt.h>
 #include <libgen.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 
 #include <X11/Xatom.h>
-#include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-#include "xwinfocus.h"
+#include "include/fringe.h"
+#include "include/option_string.h"
 
 static options_t options = {"", "", True, False, False, 0};
 
@@ -63,60 +57,14 @@ static void nsleep_ms(int ms) {
 static inline size_t min(size_t a, size_t b) { return a < b ? a : b; }
 static inline size_t max(size_t a, size_t b) { return a > b ? a : b; }
 
-static size_t fringe(const char *str, char *buf, size_t buf_size) {
-  if (!str) {
-    if (buf)
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-      strlcpy(buf, NULL_LABEL, buf_size);
-#else
-      snprintf(buf, buf_size, "%s", NULL_LABEL);
-#endif
-    return 0;
-  }
-
-  if (!*str) {
-    if (buf)
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-      strlcpy(buf, EMPTY_LABEL, buf_size);
-#else
-      snprintf(buf, buf_size, "%s", EMPTY_LABEL);
-#endif
-    return 0;
-  }
-
-  size_t result = strlen(str);
-  for (size_t i = 0; i < result; ++i)
-    if (isblank(str[i])) {
-      if (buf) {
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-        strlcpy(buf, LEFT_QUOTE, buf_size);
-        strlcat(buf, str, buf_size);
-        strlcat(buf, RIGHT_QUOTE, buf_size);
-#else
-        snprintf(buf, buf_size, LEFT_QUOTE "%s" RIGHT_QUOTE, str);
-#endif
-      }
-      return sizeof LEFT_QUOTE - 1 + result + sizeof RIGHT_QUOTE - 1;
-    }
-
-  if (buf)
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-    strlcpy(buf, str, buf_size);
-#else
-    snprintf(buf, buf_size, "%s", str);
-#endif
-
-  return result;
-}
-
-static void underline(FILE *f, char *whdr, size_t whdr_size, char *name,
-                      size_t name_size, char *class, size_t class_size,
-                      int nspace) {
+static void fprint_delimiter(FILE *f, char *whdr, size_t whdr_size, char *name,
+                             size_t name_size, char *class, size_t class_size,
+                             int nspace) {
   whdr[whdr_size - 1] = name[name_size - 1] = class[class_size - 1] = '\0';
   fprintf(f, "%s%*s%s%*s%s\n",
-          (char *)memset(whdr, HEADER_UNDERLINE, whdr_size - 1), nspace, "",
-          (char *)memset(name, HEADER_UNDERLINE, name_size - 1), nspace, "",
-          (char *)memset(class, HEADER_UNDERLINE, class_size - 1));
+          (char *)memset(whdr, DELIMITER_CHAR, whdr_size - 1), nspace, "",
+          (char *)memset(name, DELIMITER_CHAR, name_size - 1), nspace, "",
+          (char *)memset(class, DELIMITER_CHAR, class_size - 1));
 }
 #endif
 
@@ -217,16 +165,16 @@ static void list_windows(FILE *f, Display *dpy, Window root) {
       char whdr[WINID_FMT_LEN + 2 + 1], name[name_len + 1],
           class[class_len + 1];
 
-      underline(f, whdr, sizeof whdr, name, sizeof name, class, sizeof class,
-                SPACE_LEN);
+      fprint_delimiter(f, whdr, sizeof whdr, name, sizeof name, class,
+                       sizeof class, SPACE_LEN);
 
       fprintf(f, "%-*.*s%*s%-*.*s%*s%-*.*s\n", WINID_FMT_LEN + 2,
               WINID_FMT_LEN + 2, "Window ID", SPACE_LEN, "", (int)name_len,
               (int)name_len, "Name", SPACE_LEN, "", (int)class_len,
               (int)class_len, "Class");
 
-      underline(f, whdr, sizeof whdr, name, sizeof name, class, sizeof class,
-                SPACE_LEN);
+      fprint_delimiter(f, whdr, sizeof whdr, name, sizeof name, class,
+                       sizeof class, SPACE_LEN);
 
       for (unsigned long i = 0; i < n; i++)
         if (XGetClassHint(dpy, windows[i], memset(&hint, 0, sizeof hint))) {
@@ -242,18 +190,19 @@ static void list_windows(FILE *f, Display *dpy, Window root) {
             XFree(hint.res_class);
         }
 
-      underline(f, whdr, sizeof whdr, name, sizeof name, class, sizeof class,
-                SPACE_LEN);
+      fprint_delimiter(f, whdr, sizeof whdr, name, sizeof name, class,
+                       sizeof class, SPACE_LEN);
     }
     XFree(data);
   }
 }
 #endif
 
-static Window active_window(Display *dpy, Window root) {
+static Window window_property_value(Display *dpy, Window root,
+                                    const char *atom_name) {
   Window w = 0;
   unsigned char *data = NULL;
-  unsigned long n = window_property(dpy, root, NET_ACTIVE_WINDOW, &data);
+  unsigned long n = window_property(dpy, root, atom_name, &data);
   if (data) {
     if (n)
       memcpy(&w, data, sizeof w);
@@ -261,17 +210,12 @@ static Window active_window(Display *dpy, Window root) {
   }
   return w;
 }
+static Window active_window(Display *dpy, Window root) {
+  return window_property_value(dpy, root, NET_ACTIVE_WINDOW);
+}
 
 static Window retrieve_previous_window(Display *dpy, Window root) {
-  Window w = 0;
-  unsigned char *data = NULL;
-  unsigned long n = window_property(dpy, root, X_ATOM_NAME, &data);
-  if (data) {
-    if (n)
-      memcpy(&w, data, sizeof w);
-    XFree(data);
-  }
-  return w;
+  return window_property_value(dpy, root, X_ATOM_NAME);
 }
 
 static void store_previous_window(Display *dpy, Window root, Window w) {
@@ -338,50 +282,18 @@ static int print_usage(int rc) {
   return rc;
 }
 
-static size_t option_string(const struct option *opts, char *dst,
-                            size_t dst_size) {
-  size_t pos = 0;
-  dst_size = dst ? dst_size - 1 : (size_t)(-1L);
-  for (int i = 0; opts[i].name != NULL && pos < dst_size; ++i)
-    if (opts[i].val > 1) { // only short forms are processed
-      if (dst)
-        dst[pos] = opts[i].val;
-      pos++;
-      if (pos < dst_size)
-        switch (opts[i].has_arg) {
-        case required_argument:
-          if (dst)
-            dst[pos] = ':';
-          pos++;
-          break;
-        case optional_argument:
-          if (dst)
-            dst[pos] = ':';
-          pos++;
-          if (pos < dst_size) {
-            if (dst)
-              dst[pos] = ':';
-            pos++;
-          }
-        }
-    }
-  if (dst)
-    dst[pos] = '\0';
-  return pos;
-}
-
 int main(int argc, char **argv) {
   static struct option long_opts[] = {
-      {"help", no_argument, 0, 'h'},
-      {"class", required_argument, 0, 'c'},
+      {"help", no_argument, NULL, 'h'},
+      {"class", required_argument, NULL, 'c'},
 #ifndef NO_LIST_WINDOWS
-      {"list", no_argument, 0, 'l'},
+      {"list", no_argument, NULL, 'l'},
 #endif
-      {"name", required_argument, 0, 'n'},
-      {"no-store", no_argument, 0, 'S'},
-      {"verbose", no_argument, 0, 'v'},
-      {"version", no_argument, 0, 1},
-      {"wait-ms", required_argument, 0, 'w'},
+      {"name", required_argument, NULL, 'n'},
+      {"no-store", no_argument, NULL, 'S'},
+      {"verbose", no_argument, NULL, 'v'},
+      {"version", no_argument, NULL, 1},
+      {"wait-ms", required_argument, NULL, 'w'},
       {NULL, 0, NULL, 0},
   };
 

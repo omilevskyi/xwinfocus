@@ -1,0 +1,53 @@
+---
+name: Build and Run unit tests
+on: pull_request
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
+        with:
+          fetch-depth: 1
+          show-progress: "false"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update --yes --quiet=4
+          sudo apt-get install --yes --quiet=4 --no-install-recommends \
+            build-essential cppcheck \
+            libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
+
+      - name: Build project
+        run: make
+
+      - name: Verify binary
+        run: |
+          test -f xwinfocus && test -f man/xwinfocus.1.gz && \
+            echo "✅ Build succeeded" || (echo "❌ Build failed" && exit 1)
+
+      - name: Workaround for poor GNU cc
+        run: ln --symbolic --force --verbose ../include test/include
+
+      - name: Compile test_fringe
+        run: cc -std=c99 -lcriterion -o test_fringe test/test_fringe.c fringe.c
+
+      - name: Run test_fringe
+        run: ./test_fringe
+
+      - name: Compile test_option_string
+        run: cc -std=c99 -lcriterion -o test_option_string test/test_option_string.c option_string.c
+
+      - name: Run test_option_string
+        run: ./test_option_string
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
+            --language=c --std=c99 --platform=unix64 \
+            --suppress=missingIncludeSystem \
+            --suppress=checkersReport \
+            $(find . -name '*.c' -not -name 'test_*' -type f)

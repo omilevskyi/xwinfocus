@@ -1,14 +1,14 @@
 # xwinfocus
 
-Activate (or Run) X11 window
+Activate or list X11 windows, or run fallback command
 
-This is a tiny tool written alongside Copilot that does almost the same as the following script:
+This is a tiny tool written alongside AI that does almost the same as the following script:
 
 ```sh
 #!/bin/sh
 
 if [ -z "${1}" ]; then
-	echo "Usage: xwinfocus.sh WM_CLASS what_run_if_non_existing" >&2
+	echo "Usage: xwinfocus.sh name.class what_run_if_non_existing" >&2
 	exit 1
 fi
 
