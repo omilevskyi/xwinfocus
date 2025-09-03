@@ -1,7 +1,7 @@
 # xwinfocus
 
 [![Release](https://img.shields.io/github/release/omilevskyi/xwinfocus.svg)](https://github.com/omilevskyi/xwinfocus/releases/latest)
-[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://raw.githubusercontent.com/omilevskyi/xwinfocus/refs/heads/main/LICENSE)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/omilevskyi/xwinfocus?tab=BSD-3-Clause-1-ov-file)
 [![Build](https://github.com/omilevskyi/xwinfocus/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/omilevskyi/xwinfocus/actions/workflows/build.yml)
 [![Cppcheck](https://github.com/omilevskyi/xwinfocus/actions/workflows/cppcheck.yml/badge.svg?branch=main)](https://github.com/omilevskyi/xwinfocus/actions/workflows/cppcheck.yml)
 [![Powered By: nFPM](https://img.shields.io/badge/Powered%20by-nFPM-green.svg)](https://github.com/goreleaser/nfpm)
