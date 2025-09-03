@@ -1,6 +1,11 @@
 ---
-name: Build and Run unit tests
-on: pull_request
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:

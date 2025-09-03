@@ -1,5 +1,5 @@
 ---
-name: Cppcheck CI
+name: Cppcheck
 
 on:
   push:
