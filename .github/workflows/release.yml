@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows:
+      - "Build and Test"
+    branches:
+      - main
+    types:
+      - completed
+
+concurrency:
+  group: release-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    env:
+      PROG: xwinfocus
+      NFPM_URL: https://github.com/goreleaser/nfpm
+      NFPM_VERSION: 2.43.1
+      DIST: dist
+
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download artifact from the triggering Build run
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # 5.0.0
+        with:
+          name: ${{ env.PROG }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: ${{ env.DIST }}
+          github-token: ${{ github.token }}
+
+      - name: Get version
+        id: version
+        run: |
+          chmod +x ${{ env.DIST }}/${{ env.PROG }} &&
+            ${{ env.DIST }}/${{ env.PROG }} --version | \
+            awk '{ printf("version=%s\n", $2) }' | \
+            tee --append "${GITHUB_OUTPUT}"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # 3.9.2
+        with:
+          cosign-release: v2.5.3 # 488ef8ceed5ab5d77379e9077a124a0d0df41d06
+
+      - name: Download nFPM checksums
+        id: checksums
+        env:
+          FILE: checksums.txt
+        run: |
+          curl --silent --location --remote-name \
+            "https://github.com/goreleaser/nfpm/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify nFPM checksums
+        run: |
+          cosign verify-blob \
+            --certificate-identity ${{ env.NFPM_URL }}/.github/workflows/release.yml@refs/tags/v${{ env.NFPM_VERSION }} \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            --signature ${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.sig \
+            --cert ${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.pem \
+            ${{ steps.checksums.outputs.file }}
+
+      - name: Download nFPM checksums
+        id: nfpm
+        env:
+          FILE: nfpm_${{ env.NFPM_VERSION }}_amd64.deb
+        run: |
+          curl --silent --location --remote-name "${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify nFPM
+        run: sha256sum --ignore-missing --check ${{ steps.checksums.outputs.file }}
+
+      - name: Install nFPM
+        run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
+
+      - name: Create packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          old_dir="$(pwd)"
+          cd ${{ env.DIST }}
+          for pkg in apk archlinux deb ipk rpm; do
+            nfpm package --packager "${pkg}"
+          done
+          rm --force -- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz nfpm.yaml
+          cd "${old_dir}"
+
+      - name: Create and sign checksums
+        id: checksum
+        env:
+          CHECKSUM_FILE: CHECKSUM.sha512
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          old_dir="$(pwd)"
+          cd ${{ env.DIST }}
+          find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
+          mv --force --verbose ../${CHECKSUM_FILE} .
+          cosign sign-blob --yes ${CHECKSUM_FILE}
+          cd "${old_dir}"
+          echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          generate_release_notes: true
+          files: |
+            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*-x86_64.pkg.tar.zst
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.rpm
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.src.rpm
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}.x86_64.tar.xz
+            ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_amd64.deb
+            ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.apk
+            ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.ipk
+          # ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig

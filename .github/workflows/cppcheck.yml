@@ -12,13 +12,13 @@ on:
 jobs:
   cppcheck:
     name: Run Cppcheck
+    if: ${{ github.ref != 'refs/heads/main' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
           fetch-depth: 1
           show-progress: "false"
 
