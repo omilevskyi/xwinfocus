@@ -16,6 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
+          ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
           fetch-depth: 1
           show-progress: "false"
 
@@ -30,5 +31,5 @@ jobs:
             --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
             --language=c --std=c99 --platform=unix64 \
             --suppress=missingIncludeSystem \
-            --quiet \
+            --suppress=checkersReport \
             $(find . -name '*.c' -not -name 'test_*' -type f)

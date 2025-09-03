@@ -1,0 +1,13 @@
+# https://docs.cocogitto.io/reference/config.html
+from_latest_tag = true
+disable_bump_commit = true
+disable_changelog = true
+ignore_merge_commits = true
+# monorepo_version_separator = "/"
+skip_ci = "[skip ci]"
+# skip_untracked = true
+tag_prefix = "v"
+
+post_bump_hooks = [
+  "git --no-pager push origin --tags",
+]
