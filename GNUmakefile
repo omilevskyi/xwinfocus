@@ -1,7 +1,7 @@
 PROG:=		xwinfocus
-SRCS:=		$(PROG).c
-HDRS:=		$(PROG).h
-MANPAGE:=	$(PROG).1
+SRCS:=		$(PROG).c fringe.c option_string.c
+HDRS:=		include/$(PROG).h include/fringe.h include/option_string.h
+MANPAGE:=	man/$(PROG).1
 OBJS:=		$(SRCS:.c=.o)
 
 CFLAGS=		-O3 -flto -DPROG=\"$(PROG)\"

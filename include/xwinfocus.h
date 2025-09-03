@@ -1,3 +1,8 @@
+#if defined(NO_LIST_WINDOWS) ||                                                \
+    (!defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__NetBSD__))
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdio.h>
 
 #include <X11/Xlib.h>
@@ -30,24 +35,8 @@
 #define WINID_FMT "0x%0*lx"
 #define WINID_FMT_LEN (int)(sizeof(unsigned long))
 
-#ifndef NULL_LABEL
-#define NULL_LABEL "<null>"
-#endif
-
-#ifndef EMPTY_LABEL
-#define EMPTY_LABEL "<empty>"
-#endif
-
-#ifndef LEFT_QUOTE
-#define LEFT_QUOTE "\""
-#endif
-
-#ifndef RIGHT_QUOTE
-#define RIGHT_QUOTE "\""
-#endif
-
-#ifndef HEADER_UNDERLINE
-#define HEADER_UNDERLINE '-'
+#ifndef DELIMITER_CHAR
+#define DELIMITER_CHAR '-'
 #endif
 
 #ifndef MAX_BUFFER
@@ -76,23 +65,19 @@ static void nsleep_ms(int);
 
 static unsigned long window_property(Display *, Window, const char *,
                                      unsigned char **);
-static Window find_window(Display *, Window, const char *, const char *);
+static Window window_property_value(Display *, Window, const char *);
 static Window active_window(Display *, Window);
 static Window retrieve_previous_window(Display *, Window);
 static void store_previous_window(Display *, Window, Window);
+static Window find_window(Display *, Window, const char *, const char *);
 static void activate_window(Display *, Window, Window);
 static int print_version(int);
 static int print_usage(int);
-static size_t option_string(const struct option *, char *, size_t);
 
 #ifndef NO_LIST_WINDOWS
 static inline size_t min(size_t, size_t);
 static inline size_t max(size_t, size_t);
-
-static size_t fringe(const char *, char *, size_t);
-
-static void underline(FILE *, char *, size_t, char *, size_t, char *, size_t,
-                      int);
-
+static void fprint_delimiter(FILE *, char *, size_t, char *, size_t, char *,
+                             size_t, int);
 static void list_windows(FILE *, Display *, Window);
 #endif
