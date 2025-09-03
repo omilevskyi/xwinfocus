@@ -6,6 +6,14 @@ OBJS:=		$(SRCS:.c=.o)
 
 CFLAGS=		-O3 -flto -DPROG=\"$(PROG)\"
 
+ifneq ($(strip $(VERSION)),)
+CFLAGS+=	-DVERSION=\"$(VERSION)\"
+endif
+
+ifneq ($(strip $(COMMIT_HASH)),)
+CFLAGS+=	-DCOMMIT_HASH=\"$(COMMIT_HASH)\"
+endif
+
 LDFLAGS:=	-O3 -flto
 LDFLAGS+=	-Wl,--as-needed
 LDFLAGS+=	-Wl,--sort-common
@@ -29,11 +37,11 @@ $(PROG): $(OBJS)
 	$(CC) $(OBJS) -o $(PROG) $(LDFLAGS)
 
 $(MANPAGE).gz: $(MANPAGE)
-	gzip --to-stdout --no-name $(MANPAGE) > $(MANPAGE).gz
+	gzip --to-stdout --no-name $(MANPAGE) > $(notdir $(MANPAGE)).gz
 
 install:
 	$(INSTALL_BIN) $(PROG) $(DESTDIR)$(PREFIX)/bin
-	$(INSTALL_MAN) $(MANPAGE).gz $(DESTDIR)$(PREFIX)/share/man/man1/
+	$(INSTALL_MAN) $(notdir $(MANPAGE)).gz $(DESTDIR)$(PREFIX)/share/man/man1
 
 clean:
 	rm -f -- $(PROG) *.o *.gz

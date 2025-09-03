@@ -1,12 +1,17 @@
 ---
-name: Check commits are Signed
-on: pull_request
+name: Check that commits are signed
+
+on: pull_request_target
 
 jobs:
-  check-commits:
+  check:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       pull-requests: write
+
     steps:
       - uses: 1Password/check-signed-commits-action@ed2885f3ed2577a4f5d3c3fe895432a557d23d52 # 1.2.0
+        with:
+          comment: "Commit ${{ github.sha }} for ${{ github.ref_name }} branch must be signed to be accepted"
