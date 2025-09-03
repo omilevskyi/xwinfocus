@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
           fetch-depth: 1
@@ -15,10 +15,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update --yes --quiet=4
-          sudo apt-get install --yes --quiet=4 --no-install-recommends \
-            build-essential cppcheck \
-            libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
+          sudo apt-get update --yes --quiet=2
+          sudo apt-get install --yes --quiet=2 --no-install-recommends \
+            build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
 
       - name: Build project
         run: make
@@ -43,11 +42,11 @@ jobs:
       - name: Run test_option_string
         run: ./test_option_string
 
-      - name: Run cppcheck
-        run: |
-          cppcheck \
-            --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
-            --language=c --std=c99 --platform=unix64 \
-            --suppress=missingIncludeSystem \
-            --suppress=checkersReport \
-            $(find . -name '*.c' -not -name 'test_*' -type f)
+      # - name: Run cppcheck
+      #   run: |
+      #     cppcheck \
+      #       --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
+      #       --language=c --std=c99 --platform=unix64 \
+      #       --suppress=missingIncludeSystem \
+      #       --suppress=checkersReport \
+      #       $(find . -name '*.c' -not -name 'test_*' -type f)

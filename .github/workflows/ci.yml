@@ -1,0 +1,34 @@
+---
+name: Cppcheck CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  cppcheck:
+    name: Run Cppcheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
+        with:
+          fetch-depth: 1
+          show-progress: "false"
+
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update --yes --quiet=2
+          sudo apt-get install --yes --quiet=2 --no-install-recommends cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
+            --language=c --std=c99 --platform=unix64 \
+            --suppress=missingIncludeSystem \
+            --quiet \
+            $(find . -name '*.c' -not -name 'test_*' -type f)
