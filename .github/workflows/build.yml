@@ -3,12 +3,15 @@ name: Build and Test
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
+    name: Run Build and Tests
     runs-on: ubuntu-latest
 
     permissions:
@@ -56,7 +59,16 @@ jobs:
         run: git --no-pager clean --force -d -x
 
       # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
+      - name: Verify
+        if: github.ref != 'refs/heads/main'
+        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        with:
+          check: false
+          check-latest-tag-only: true
+          verify: true
+
       - name: Release
+        if: github.ref == 'refs/heads/main'
         uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
         with:
           git-user: cocogitto
