@@ -2,6 +2,7 @@
 
 ![Build](https://github.com/omilevskyi/xwinfocus/actions/workflows/build.yml/badge.svg?branch=main)
 ![Cppcheck](https://github.com/omilevskyi/xwinfocus/actions/workflows/ci.yml/badge.svg?branch=main)
+![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)
 
 Activate or list X11 windows, or run fallback command
 
