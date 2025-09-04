@@ -263,7 +263,7 @@ static int print_usage(int rc) {
          "  -l, --list           List all windows\n"
 #endif
          "  -S, --no-store       Do not store current active window id "
-         "in " X_ATOM_NAME "\n"
+         "in " X_ATOM_NAME " window property\n"
          "  -v, --verbose        Verbose text output\n"
          "  -w, --wait-ms <ms>   Wait this many milliseconds after fallback "
          "command is run and then activate window\n"
