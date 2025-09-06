@@ -38,7 +38,7 @@ jobs:
           name: ${{ env.PROG }}
           run-id: ${{ github.event.workflow_run.id }}
           path: ${{ env.DIST }}
-          # github-token: ${{ github.token }}
+          github-token: ${{ github.token }}
 
       - name: List files
         run: ls -la ${{ env.DIST }}
