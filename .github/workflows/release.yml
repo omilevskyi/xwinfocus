@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows:
+      - "Check that commits are signed"
+      - "Build and Test"
+      - Cppcheck
+    branches:
+      - main
+    types:
+      - completed
+
+concurrency:
+  group: release-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    env:
+      PROG: xwinfocus
+      NFPM_URL: https://github.com/goreleaser/nfpm
+      NFPM_VERSION: 2.43.1
+      DIST: dist
+
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download artifact from the triggering Build run
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # 5.0.0
+        with:
+          name: ${{ env.PROG }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: ${{ env.DIST }}
+          # github-token: ${{ github.token }}
+
+      - name: List files
+        run: ls -la ${{ env.DIST }}
+
+      - id: version
+        run: |
+          version=$(head -1 ${{ env.DIST }}/VERSION)"
+          echo "version=${version#v}" >>"${GITHUB_OUTPUT}"
+          rm --force -- ${{ env.DIST }}/VERSION
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # 3.9.2
+        with:
+          cosign-release: v2.5.3 # 488ef8ceed5ab5d77379e9077a124a0d0df41d06
+
+      - name: Download nFPM checksums
+        id: checksums
+        run: |
+          export FILE=checksums.txt
+          curl --silent --location --remote-name \
+            "https://github.com/goreleaser/nfpm/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify nFPM checksums
+        run: |
+          cosign verify-blob \
+            --certificate-identity '${{ env.NFPM_URL }}/.github/workflows/release.yml@refs/tags/v${{ env.NFPM_VERSION }}' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            --signature '${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.sig' \
+            --cert '${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.pem' \
+            ${{ steps.checksums.outputs.file }}
+
+      - name: Download nFPM checksums
+        id: nfpm
+        run: |
+          export FILE='nfpm_${{ env.NFPM_VERSION }}_amd64.deb'
+          curl --silent --location --remote-name "${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify nFPM
+        run: sha256sum --ignore-missing --check ${{ steps.checksums.outputs.file }}
+
+      - name: Install nFPM
+        run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
+
+      - name: Create .apk
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager apk
+
+      - name: Create .archlinux
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager archlinux
+
+      - name: Create .deb
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager deb
+
+      - name: Create .ipk
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager ipk
+
+      - name: Create .rpm
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager rpm
+
+      - name: Create .srpm
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager srpm
+
+      - name: Create tarball
+        run: |
+          tar --create --verbose --file=- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz | \
+            xz -9 --extreme > ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}.x86_64.tar.xz
+          rm --force -- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz
+
+      - name: Create checksums
+        id: checksum
+        run: |
+          export CHECKSUM_FILE=CHECKSUM.sha512
+          old_dir="$(pwd)"
+          cd ${{ env.DIST }}
+          find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
+          mv --force --verbose ../${CHECKSUM_FILE} .
+          cosign sign-blob --yes ${CHECKSUM_FILE} > ${CHECKSUM_FILE}.sig
+          cd "${old_dir}"
+          echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: List ${{ env.DIST }}
+        run: |
+          ls -la ${{ env.DIST }}
+          cat ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          tag_name: v${{ github.event.workflow_run.run_number }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          generate_release_notes: true
+          files: |
+            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
+            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*-x86_64.pkg.tar.zst
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.rpm
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.src.rpm
+            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}.x86_64.tar.xz
+            ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_amd64.deb
+            ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.apk
+            ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.ipk
+
+      - name: Release
+        if: github.ref == 'refs/heads/main'
+        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        with:
+          git-user: cocogitto
+          git-user-email: cocogitto@github.com
+          check: false
+          check-latest-tag-only: true
+          release: true

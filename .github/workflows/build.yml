@@ -14,17 +14,33 @@ jobs:
     name: Run Build and Tests
     runs-on: ubuntu-latest
 
+    env:
+      PROG: xwinfocus
+
     permissions:
-      id-token: write
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
+          # ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
           fetch-depth: 0
           show-progress: "false"
+
+      # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
+      - name: Cocogitto verify
+        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        with:
+          check: false
+          check-latest-tag-only: true
+          verify: false
+
+      - id: version
+        run: echo "version=$(cog bump --auto --dry-run)" >>"${GITHUB_OUTPUT}"
+
+      - id: github
+        run: echo 'commit_hash=${{ github.sha }}' >>"${GITHUB_OUTPUT}"
 
       - name: Install dependencies
         run: |
@@ -33,12 +49,12 @@ jobs:
             build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
 
       - name: Build project
-        run: make
-
-      - name: Verify binary
         run: |
-          test -f xwinfocus && test -f man/xwinfocus.1.gz && \
-            echo "✅ Build succeeded" || (echo "❌ Build failed" && exit 1)
+          make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
+          strip ./${{ env.PROG }}
+
+      - name: Test version
+        run: ./${{ env.PROG }} --version
 
       - name: Workaround for poor GNU cc
         run: ln --symbolic --force --verbose ../include test/include
@@ -55,24 +71,18 @@ jobs:
       - name: Run test_option_string
         run: ./test_option_string
 
-      - name: Clean up
-        run: git --no-pager clean --force -d -x
+      - name: Write VERSION
+        run: echo '${{ steps.version.outputs.version }}' >VERSION
 
-      # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
-      - name: Verify
-        if: github.ref != 'refs/heads/main'
-        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+      - name: Upload artifact bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # 4.6.2
         with:
-          check: false
-          check-latest-tag-only: true
-          verify: true
-
-      - name: Release
-        if: github.ref == 'refs/heads/main'
-        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
-        with:
-          git-user: cocogitto
-          git-user-email: cocogitto@github.com
-          check: false
-          check-latest-tag-only: true
-          release: true
+          name: ${{ env.PROG }}
+          path: |
+            LICENSE
+            ${{ env.PROG }}
+            ${{ env.PROG }}.1.gz
+            VERSION
+          retention-days: 1
+          compression-level: 9
+          overwrite: true
