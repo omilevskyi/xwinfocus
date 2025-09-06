@@ -14,6 +14,11 @@ jobs:
     name: Run Build and Tests
     runs-on: ubuntu-latest
 
+    env:
+      NFPM_URL: https://github.com/goreleaser/nfpm
+      NFPM_VERSION: 2.43.1
+      PROG: xwinfocus
+
     permissions:
       id-token: write
       contents: write
@@ -26,6 +31,20 @@ jobs:
           fetch-depth: 0
           show-progress: "false"
 
+      # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
+      - name: Cocogitto verify
+        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        with:
+          check: false
+          check-latest-tag-only: true
+          verify: true
+
+      - id: version
+        run: echo "version=$(cog bump --auto --dry-run)" >>"${GITHUB_OUTPUT}"
+
+      - id: github
+        run: echo 'commit_hash=${{ github.sha }}' >>"${GITHUB_OUTPUT}"
+
       - name: Install dependencies
         run: |
           sudo apt-get update --yes --quiet=2
@@ -33,12 +52,10 @@ jobs:
             build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
 
       - name: Build project
-        run: make
+        run: make PROG=${{ env.PROG }} VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
 
-      - name: Verify binary
-        run: |
-          test -f xwinfocus && test -f man/xwinfocus.1.gz && \
-            echo "✅ Build succeeded" || (echo "❌ Build failed" && exit 1)
+      - name: Test version
+        run: ./${{ env.PROG }} --version
 
       - name: Workaround for poor GNU cc
         run: ln --symbolic --force --verbose ../include test/include
@@ -55,17 +72,85 @@ jobs:
       - name: Run test_option_string
         run: ./test_option_string
 
-      - name: Clean up
-        run: git --no-pager clean --force -d -x
-
-      # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
-      - name: Verify
-        if: github.ref != 'refs/heads/main'
-        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # 3.9.2
         with:
-          check: false
-          check-latest-tag-only: true
-          verify: true
+          cosign-release: v2.5.3 # 488ef8ceed5ab5d77379e9077a124a0d0df41d06
+
+      - name: Download nFPM checksums
+        id: checksums
+        run: |
+          export FILE=checksums.txt
+          curl --silent --location --remote-name \
+            "https://github.com/goreleaser/nfpm/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify nFPM checksums
+        run: |
+          cosign verify-blob \
+            --certificate-identity '${{ env.NFPM_URL }}/.github/workflows/release.yml@refs/tags/v${{ env.NFPM_VERSION }}' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            --signature '${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.sig' \
+            --cert '${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.pem' \
+            ${{ steps.checksums.outputs.file }}
+
+      - name: Download nFPM checksums
+        id: nfpm
+        run: |
+          export FILE='nfpm_${{ env.NFPM_VERSION }}_amd64.deb'
+          curl --silent --location --remote-name "${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify nFPM
+        run: sha256sum --ignore-missing --check ${{ steps.checksums.outputs.file }}
+
+      - name: Install nFPM
+        run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
+
+      - name: Install nFPM
+        id: dist
+        run: |
+          export DIST=dist
+          mkdir --parent --mode=0755 --verbose "${DIST}"
+          echo "dist=${DIST}" >>"${GITHUB_OUTPUT}"
+
+      - name: Create .apk
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ steps.dist.outputs.dist }}' --packager apk
+
+      - name: Create .archlinux
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ steps.dist.outputs.dist }}' --packager archlinux
+
+      - name: Create .deb
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ steps.dist.outputs.dist }}' --packager deb
+
+      - name: Create .ipk
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ steps.dist.outputs.dist }}' --packager ipk
+
+      - name: Create .rpm
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ steps.dist.outputs.dist }}' --packager rpm
+
+      - name: Create .srpm
+        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ steps.dist.outputs.dist }}' --packager srpm
+
+      - name: Create tarball
+        run: |
+          tar --create --verbose --file=- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz | \
+            xz -9 --extreme ${{ steps.dist.outputs.dist }}/${{ env.PROG }}-${{ steps.version.outputs.version }}.x86_64.tar.xz
+
+      - name: Create checksums
+        run: |
+          cd ${{ steps.dist.outputs.dist }}
+          find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../CHECKSUM.sha512
+          mv --force --verbose ../CHECKSUM.sha512 .
+          cosign sign-blob --yes CHECKSUM.sha512
+          cd ..
+
+      - name: List ${{ steps.dist.outputs.dist }}
+        run: ls -l ${{ steps.dist.outputs.dist }}
+
+      - name: Clean up
+        if: github.ref == 'refs/heads/main'
+        run: git --no-pager clean --force -d -x
 
       - name: Release
         if: github.ref == 'refs/heads/main'
