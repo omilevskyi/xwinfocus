@@ -85,6 +85,7 @@ jobs:
             ${{ env.PROG }}
             ${{ env.PROG }}.1.gz
             VERSION
+            nfpm.yaml
           retention-days: 1
           compression-level: 9
           overwrite: true
