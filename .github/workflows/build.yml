@@ -72,9 +72,11 @@ jobs:
         run: ./test_option_string
 
       - name: Write VERSION
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: echo '${{ steps.version.outputs.version }}' >VERSION
 
       - name: Upload artifact bundle
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # 4.6.2
         with:
           name: ${{ env.PROG }}
