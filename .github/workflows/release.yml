@@ -3,9 +3,7 @@ name: Release
 on:
   workflow_run:
     workflows:
-      - "Check that commits are signed"
       - "Build and Test"
-      - Cppcheck
     branches:
       - main
     types:
@@ -45,7 +43,7 @@ jobs:
 
       - id: version
         run: |
-          version=$(head -1 ${{ env.DIST }}/VERSION)"
+          version="$(head -1 ${{ env.DIST }}/VERSION)"
           echo "version=${version#v}" >>"${GITHUB_OUTPUT}"
           rm --force -- ${{ env.DIST }}/VERSION
 
@@ -141,13 +139,3 @@ jobs:
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_amd64.deb
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.apk
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.ipk
-
-      - name: Release
-        if: github.ref == 'refs/heads/main'
-        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
-        with:
-          git-user: cocogitto
-          git-user-email: cocogitto@github.com
-          check: false
-          check-latest-tag-only: true
-          release: true
