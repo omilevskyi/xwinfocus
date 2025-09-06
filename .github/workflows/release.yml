@@ -106,9 +106,9 @@ jobs:
           cd ${{ env.DIST }}
           find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
           mv --force --verbose ../${CHECKSUM_FILE} .
-          cosign sign-blob --yes ${CHECKSUM_FILE} > ${CHECKSUM_FILE}.sig
           cd "${old_dir}"
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
+        # cosign sign-blob --yes ${CHECKSUM_FILE} > ${CHECKSUM_FILE}.sig
 
       - name: List ${{ env.DIST }}
         run: |
@@ -123,7 +123,6 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
-            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*-x86_64.pkg.tar.zst
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.rpm
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.src.rpm
@@ -131,3 +130,4 @@ jobs:
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_amd64.deb
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.apk
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.ipk
+          # ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig
