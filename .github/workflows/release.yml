@@ -82,23 +82,15 @@ jobs:
       - name: Install nFPM
         run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
 
-      - name: Create .apk
-        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager apk
-
-      - name: Create .archlinux
-        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager archlinux
-
-      - name: Create .deb
-        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager deb
-
-      - name: Create .ipk
-        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager ipk
-
-      - name: Create .rpm
-        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager rpm
-
-      - name: Create .srpm
-        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager srpm
+      - name: Create packages
+        run: |
+          old_dir="$(pwd)"
+          cd ${{ env.DIST }}
+          export VERSION=${{ steps.version.outputs.version }}
+          for pkg in apk archlinux deb ipk rpm srpm; do
+            nfpm package --packager "${pkg}"
+          done
+          cd "${old_dir}"
 
       - name: Create tarball
         run: |
