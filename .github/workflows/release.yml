@@ -63,10 +63,10 @@ jobs:
       - name: Verify nFPM checksums
         run: |
           cosign verify-blob \
-            --certificate-identity '${{ env.NFPM_URL }}/.github/workflows/release.yml@refs/tags/v${{ env.NFPM_VERSION }}' \
+            --certificate-identity ${{ env.NFPM_URL }}/.github/workflows/release.yml@refs/tags/v${{ env.NFPM_VERSION }} \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            --signature '${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.sig' \
-            --cert '${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.pem' \
+            --signature ${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.sig \
+            --cert ${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.pem \
             ${{ steps.checksums.outputs.file }}
 
       - name: Download nFPM checksums
@@ -83,28 +83,28 @@ jobs:
         run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
 
       - name: Create .apk
-        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager apk
+        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager apk
 
       - name: Create .archlinux
-        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager archlinux
+        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager archlinux
 
       - name: Create .deb
-        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager deb
+        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager deb
 
       - name: Create .ipk
-        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager ipk
+        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager ipk
 
       - name: Create .rpm
-        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager rpm
+        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager rpm
 
       - name: Create .srpm
-        run: env VERSION='${{ steps.version.outputs.version }}' nfpm package --target '${{ env.DIST }}' --packager srpm
+        run: env VERSION=${{ steps.version.outputs.version }} nfpm package --config ${{ env.DIST }}/nfpm.yaml --target ${{ env.DIST }} --packager srpm
 
       - name: Create tarball
         run: |
-          tar --create --verbose --file=- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz | \
+          tar --create --directory ${{ env.DIST }} --verbose --file=- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz | \
             xz -9 --extreme > ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}.x86_64.tar.xz
-          rm --force -- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz
+          rm --force -- ${{ env.DIST }}/LICENSE ${{ env.DIST }}/${{ env.PROG }} ${{ env.DIST }}/${{ env.PROG }}.1.gz ${{ env.DIST }}/nfpm.yaml
 
       - name: Create checksums
         id: checksum
