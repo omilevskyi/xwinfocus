@@ -21,13 +21,14 @@ jobs:
 
     env:
       PROG: xwinfocus
+      OIDC_ISSUER: https://token.actions.githubusercontent.com
       NFPM_URL: https://github.com/goreleaser/nfpm
       NFPM_VERSION: 2.43.1
       DIST: dist
 
     permissions:
       actions: read
-      contents: write
+      contents: read
       id-token: write
 
     steps:
@@ -42,15 +43,15 @@ jobs:
       - name: Get version
         id: version
         run: |
-          chmod +x ${{ env.DIST }}/${{ env.PROG }} &&
-            ${{ env.DIST }}/${{ env.PROG }} --version | \
+          chmod +x ${DIST}/${PROG} &&
+            ${DIST}/${PROG} --version | \
             awk '{ printf("version=%s\n", $2) }' | \
             tee --append "${GITHUB_OUTPUT}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # 3.9.2
         with:
-          cosign-release: v2.5.3 # 488ef8ceed5ab5d77379e9077a124a0d0df41d06
+          cosign-release: v2.5.3
 
       - name: Download nFPM checksums
         id: checksums
@@ -58,16 +59,16 @@ jobs:
           FILE: checksums.txt
         run: |
           curl --silent --location --remote-name \
-            "https://github.com/goreleaser/nfpm/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/${FILE}"
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
       - name: Verify nFPM checksums
         run: |
           cosign verify-blob \
-            --certificate-identity ${{ env.NFPM_URL }}/.github/workflows/release.yml@refs/tags/v${{ env.NFPM_VERSION }} \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --signature ${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.sig \
-            --cert ${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${{ steps.checksums.outputs.file }}.pem \
+            --certificate-identity ${NFPM_URL}/.github/workflows/release.yml@refs/tags/v${NFPM_VERSION} \
+            --certificate-oidc-issuer ${OIDC_ISSUER} \
+            --signature ${NFPM_URL}/releases/download/v${NFPM_VERSION}/${{ steps.checksums.outputs.file }}.sig \
+            --cert ${NFPM_URL}/releases/download/v${NFPM_VERSION}/${{ steps.checksums.outputs.file }}.pem \
             ${{ steps.checksums.outputs.file }}
 
       - name: Download nFPM
@@ -75,7 +76,7 @@ jobs:
         env:
           FILE: nfpm_${{ env.NFPM_VERSION }}_amd64.deb
         run: |
-          curl --silent --location --remote-name "${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
+          curl --silent --location --remote-name "${NFPM_URL}/releases/download/v${NFPM_VERSION}/${FILE}"
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
       - name: Verify nFPM
@@ -89,11 +90,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           old_dir="$(pwd)"
-          cd ${{ env.DIST }}
+          cd ${DIST}
           for pkg in apk archlinux deb ipk rpm; do
             nfpm package --packager "${pkg}"
           done
-          rm --force -- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz nfpm.yaml
+          rm --force -- LICENSE ${PROG} ${PROG}.1.gz nfpm.yaml
           cd "${old_dir}"
 
       - name: Create and sign checksums
@@ -103,8 +104,8 @@ jobs:
           COSIGN_EXPERIMENTAL: 1
         run: |
           old_dir="$(pwd)"
-          cd ${{ env.DIST }}
-          find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
+          cd ${DIST}
+          find . -type f | sort | xargs --max-args=1 basename | xargs ${CHECKSUM_FILE##*.}sum > ../${CHECKSUM_FILE}
           mv --force --verbose ../${CHECKSUM_FILE} .
           cosign sign-blob --yes ${CHECKSUM_FILE} \
             --output-signature ${CHECKSUM_FILE}.sig \
@@ -113,15 +114,16 @@ jobs:
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
           echo "sig_file=${CHECKSUM_FILE}.sig" >>"${GITHUB_OUTPUT}"
           echo "pem_file=${CHECKSUM_FILE}.pem" >>"${GITHUB_OUTPUT}"
+          echo "certificate_identity=https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/${GITHUB_REF_NAME}" >>"${GITHUB_OUTPUT}"
 
       - name: Verify nFPM checksums
         run: |
           cosign verify-blob \
-            --certificate-identity-regexp "${GITHUB_REPOSITORY}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate ${{ env.DIST }}/${{ steps.checksum.outputs.pem_file }} \
-            --signature ${{ env.DIST }}/${{ steps.checksum.outputs.sig_file }} \
-            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
+            --certificate-identity ${{ steps.checksum.outputs.certificate_identity }}" \
+            --certificate-oidc-issuer ${OIDC_ISSUER} \
+            --certificate ${DIST}/${{ steps.checksum.outputs.pem_file }} \
+            --signature ${DIST}/${{ steps.checksum.outputs.sig_file }} \
+            ${DIST}/${{ steps.checksum.outputs.file }}
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
@@ -135,8 +137,6 @@ jobs:
             ${{ env.DIST }}/${{ steps.checksum.outputs.pem_file }}
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*-x86_64.pkg.tar.zst
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.rpm
-            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.src.rpm
-            ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}.x86_64.tar.xz
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_amd64.deb
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.apk
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.ipk
