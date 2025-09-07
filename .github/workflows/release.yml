@@ -99,13 +99,13 @@ jobs:
         id: checksum
         env:
           CHECKSUM_FILE: CHECKSUM.sha512
-          COSIGN_EXPERIMENTAL: "1"
+          COSIGN_EXPERIMENTAL: 1
         run: |
           old_dir="$(pwd)"
           cd ${{ env.DIST }}
           find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
           mv --force --verbose ../${CHECKSUM_FILE} .
-          cosign sign-blob --yes ${CHECKSUM_FILE}
+          cosign sign-blob --yes ${CHECKSUM_FILE} --output-signature ${CHECKSUM_FILE}.sig
           cd "${old_dir}"
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
 
