@@ -105,16 +105,22 @@ jobs:
           cd ${{ env.DIST }}
           find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
           mv --force --verbose ../${CHECKSUM_FILE} .
-          cosign sign-blob --yes ${CHECKSUM_FILE} --output-signature ${CHECKSUM_FILE}.sig
+          cosign sign-blob --yes ${CHECKSUM_FILE} \
+            --output-signature ${CHECKSUM_FILE}.sig \
+            --output-certificate ${CHECKSUM_FILE}.pem
           cd "${old_dir}"
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
 
-      - run: find ${{ env.DIST }} -type f | sort | xargs --max-args=1 basename
+      - run: |
+          find ${{ env.DIST }} -type f | sort | xargs --max-args=1 basename
+          echo "GITHUB_REPOSITORY=|${GITHUB_REPOSITORY}|"
 
       - name: Verify nFPM checksums
         run: |
-          cosign verify-blob --certificate-identity-regexp "${GITHUB_REPOSITORY}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          cosign verify-blob \
+            --certificate-identity-regexp "${GITHUB_REPOSITORY}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.pem \
             --signature ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig \
             ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
 
@@ -127,6 +133,7 @@ jobs:
           files: |
             ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
             ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig
+            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.pem
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*-x86_64.pkg.tar.zst
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.rpm
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.src.rpm
