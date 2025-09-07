@@ -28,7 +28,7 @@ jobs:
 
     permissions:
       actions: read
-      contents: read
+      contents: write
       id-token: write
 
     steps:
@@ -43,8 +43,9 @@ jobs:
       - name: Get version
         id: version
         run: |
-          chmod +x ${DIST}/${PROG} &&
-            ${DIST}/${PROG} --version | \
+          set -o pipefail
+          chmod +x ${DIST}/${PROG}
+          ${DIST}/${PROG} --version | \
             awk '{ printf("version=%s\n", $2) }' | \
             tee --append "${GITHUB_OUTPUT}"
 
@@ -58,8 +59,7 @@ jobs:
         env:
           FILE: checksums.txt
         run: |
-          curl --silent --location --remote-name \
-            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/${FILE}"
+          curl --silent --location --remote-name ${NFPM_URL}/releases/download/v${NFPM_VERSION}/${FILE}
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
       - name: Verify nFPM checksums
@@ -83,7 +83,7 @@ jobs:
         run: sha256sum --ignore-missing --check ${{ steps.checksums.outputs.file }}
 
       - name: Install nFPM
-        run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
+        run: sudo dpkg --install ${{ steps.nfpm.outputs.file }} --no-triggers
 
       - name: Create packages
         env:
@@ -114,12 +114,16 @@ jobs:
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
           echo "sig_file=${CHECKSUM_FILE}.sig" >>"${GITHUB_OUTPUT}"
           echo "pem_file=${CHECKSUM_FILE}.pem" >>"${GITHUB_OUTPUT}"
-          echo "certificate_identity=https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/${GITHUB_REF_NAME}" >>"${GITHUB_OUTPUT}"
+
+      - name: Get certificate identity
+        id: certificate_identity
+        run: |
+          echo "url=${GITHUB_SERVER_URL}/${GITHUB_WORKFLOW_REF}" | tee --append "${GITHUB_OUTPUT}"
 
       - name: Verify checksums
         run: |
           cosign verify-blob \
-            --certificate-identity ${{ steps.checksum.outputs.certificate_identity }} \
+            --certificate-identity ${{ steps.certificate_identity.outputs.url }} \
             --certificate-oidc-issuer ${OIDC_ISSUER} \
             --certificate ${DIST}/${{ steps.checksum.outputs.pem_file }} \
             --signature ${DIST}/${{ steps.checksum.outputs.sig_file }} \
