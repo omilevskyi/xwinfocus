@@ -116,10 +116,10 @@ jobs:
           echo "pem_file=${CHECKSUM_FILE}.pem" >>"${GITHUB_OUTPUT}"
           echo "certificate_identity=https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/${GITHUB_REF_NAME}" >>"${GITHUB_OUTPUT}"
 
-      - name: Verify nFPM checksums
+      - name: Verify checksums
         run: |
           cosign verify-blob \
-            --certificate-identity ${{ steps.checksum.outputs.certificate_identity }}" \
+            --certificate-identity ${{ steps.checksum.outputs.certificate_identity }} \
             --certificate-oidc-issuer ${OIDC_ISSUER} \
             --certificate ${DIST}/${{ steps.checksum.outputs.pem_file }} \
             --signature ${DIST}/${{ steps.checksum.outputs.sig_file }} \
