@@ -38,14 +38,9 @@ jobs:
           path: ${{ env.DIST }}
           github-token: ${{ github.token }}
 
-      - name: List files
-        run: ls -la ${{ env.DIST }}
-
-      - id: version
-        run: |
-          version="$(head -1 ${{ env.DIST }}/VERSION)"
-          echo "version=${version#v}" >>"${GITHUB_OUTPUT}"
-          rm --force -- ${{ env.DIST }}/VERSION
+      - name: Get version
+        id: version
+        run: ${{ env.DIST }}/${{ env.PROG }} --version | awk '{ printf("version=%s\n", $2) }' >>"${GITHUB_OUTPUT}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # 3.9.2
@@ -54,8 +49,9 @@ jobs:
 
       - name: Download nFPM checksums
         id: checksums
+        env:
+          FILE: checksums.txt
         run: |
-          export FILE=checksums.txt
           curl --silent --location --remote-name \
             "https://github.com/goreleaser/nfpm/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
@@ -71,8 +67,9 @@ jobs:
 
       - name: Download nFPM checksums
         id: nfpm
+        env:
+          FILE: nfpm_${{ env.NFPM_VERSION }}_amd64.deb
         run: |
-          export FILE='nfpm_${{ env.NFPM_VERSION }}_amd64.deb'
           curl --silent --location --remote-name "${{ env.NFPM_URL }}/releases/download/v${{ env.NFPM_VERSION }}/${FILE}"
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
@@ -83,32 +80,35 @@ jobs:
         run: sudo dpkg --install ${{ steps.nfpm.outputs.file }}
 
       - name: Create packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           old_dir="$(pwd)"
           cd ${{ env.DIST }}
-          export VERSION=${{ steps.version.outputs.version }}
           for pkg in apk archlinux deb ipk rpm; do
             nfpm package --packager "${pkg}"
           done
           rm --force -- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz nfpm.yaml
           cd "${old_dir}"
 
-      - name: Create checksums
+      - name: Create and sign checksums
         id: checksum
+        env:
+          CHECKSUM_FILE: CHECKSUM.sha512
+          COSIGN_EXPERIMENTAL: "1"
         run: |
-          export CHECKSUM_FILE=CHECKSUM.sha512
           old_dir="$(pwd)"
           cd ${{ env.DIST }}
           find . -type f | sort | xargs --max-args=1 basename | xargs sha512sum > ../${CHECKSUM_FILE}
           mv --force --verbose ../${CHECKSUM_FILE} .
+          cosign sign-blob --yes ${CHECKSUM_FILE}
           cd "${old_dir}"
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
-        # cosign sign-blob --yes ${CHECKSUM_FILE} > ${CHECKSUM_FILE}.sig
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
           target_commitish: ${{ github.event.workflow_run.head_sha }}
           generate_release_notes: true
           files: |
