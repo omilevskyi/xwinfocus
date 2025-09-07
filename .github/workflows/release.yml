@@ -59,7 +59,8 @@ jobs:
         env:
           FILE: checksums.txt
         run: |
-          curl --silent --location --remote-name ${NFPM_URL}/releases/download/v${NFPM_VERSION}/${FILE}
+          curl --fail --show-error --silent --location --remote-name \
+            ${NFPM_URL}/releases/download/v${NFPM_VERSION}/${FILE}
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
       - name: Verify nFPM checksums
@@ -76,7 +77,8 @@ jobs:
         env:
           FILE: nfpm_${{ env.NFPM_VERSION }}_amd64.deb
         run: |
-          curl --silent --location --remote-name "${NFPM_URL}/releases/download/v${NFPM_VERSION}/${FILE}"
+          curl --fail --show-error --silent --location --remote-name \
+            ${NFPM_URL}/releases/download/v${NFPM_VERSION}/${FILE}
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
       - name: Verify nFPM
@@ -105,7 +107,10 @@ jobs:
         run: |
           old_dir="$(pwd)"
           cd ${DIST}
-          find . -type f | sort | xargs --max-args=1 basename | xargs ${CHECKSUM_FILE##*.}sum > ../${CHECKSUM_FILE}
+          find . -type f -print0 |
+            sort --zero-terminated |
+            xargs --null --max-args=1 basename |
+            xargs ${CHECKSUM_FILE##*.}sum > ../${CHECKSUM_FILE}
           mv --force --verbose ../${CHECKSUM_FILE} .
           cosign sign-blob --yes ${CHECKSUM_FILE} \
             --output-signature ${CHECKSUM_FILE}.sig \
