@@ -95,13 +95,22 @@ jobs:
           rm --force -- LICENSE ${{ env.PROG }} ${{ env.PROG }}.1.gz nfpm.yaml
           cd "${old_dir}"
 
+      - name: Get OIDC token
+        id: oidc_token
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # 7.1.0
+        with:
+          script: |
+            const token = await github.rest.actions.getOIDCToken({
+              repository_id: context.repo.repo_id,
+              audience: "sigstore"
+            });
+            return token.data.value;
+
       - name: Create and sign checksums
         id: checksum
         env:
           CHECKSUM_FILE: CHECKSUM.sha512
           COSIGN_EXPERIMENTAL: 1
-          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_URL }}
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ secrets.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           old_dir="$(pwd)"
           cd ${{ env.DIST }}
@@ -109,7 +118,8 @@ jobs:
           mv --force --verbose ../${CHECKSUM_FILE} .
           cosign sign-blob --yes ${CHECKSUM_FILE} \
             --output-signature ${CHECKSUM_FILE}.sig \
-            --output-certificate ${CHECKSUM_FILE}.pem
+            --output-certificate ${CHECKSUM_FILE}.pem \
+            --identity-token "${{ steps.oidc_token.outputs.result }}"
           cd "${old_dir}"
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
           echo "sig_file=${CHECKSUM_FILE}.sig" >>"${GITHUB_OUTPUT}"
