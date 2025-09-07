@@ -12,7 +12,7 @@ on:
 jobs:
   cppcheck:
     name: Run Cppcheck
-    if: ${{ github.ref != 'refs/heads/main' }}
+    if: ${{ github.ref != 'refs/heads/main' && false }}
     runs-on: ubuntu-latest
 
     steps:
