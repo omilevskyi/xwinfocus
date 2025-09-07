@@ -3,11 +3,9 @@ name: Build and Test
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
@@ -53,27 +51,27 @@ jobs:
             build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
 
       - name: Build project
-        run: |
-          make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
-          strip ./${{ env.PROG }}
+        run: make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
+
+      - name: Strip binary
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: strip ./${PROG}
 
       - name: Test run
-        run: ./${{ env.PROG }} --version
+        run: ./${PROG} --version
 
       - name: Workaround for poor GNU cc
         run: ln --symbolic --force --verbose ../include test/include
 
-      - name: Compile test_fringe
-        run: cc -std=c99 -lcriterion -o test_fringe test/test_fringe.c fringe.c
-
       - name: Run test_fringe
-        run: ./test_fringe
-
-      - name: Compile test_option_string
-        run: cc -std=c99 -lcriterion -o test_option_string test/test_option_string.c option_string.c
+        run: |
+          cc -std=c99 -lcriterion -o test_fringe test/test_fringe.c fringe.c
+          ./test_fringe
 
       - name: Run test_option_string
-        run: ./test_option_string
+        run: |
+          cc -std=c99 -lcriterion -o test_option_string test/test_option_string.c option_string.c
+          ./test_option_string
 
       - name: Upload artifact bundle
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
