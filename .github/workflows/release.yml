@@ -40,7 +40,11 @@ jobs:
 
       - name: Get version
         id: version
-        run: ${{ env.DIST }}/${{ env.PROG }} --version | awk '{ printf("version=%s\n", $2) }' >>"${GITHUB_OUTPUT}"
+        run: |
+          chmod +x ${{ env.DIST }}/${{ env.PROG }} &&
+            ${{ env.DIST }}/${{ env.PROG }} --version | \
+            awk '{ printf("version=%s\n", $2) }' | \
+            tee --append "${GITHUB_OUTPUT}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # 3.9.2
