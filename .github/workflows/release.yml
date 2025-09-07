@@ -109,6 +109,15 @@ jobs:
           cd "${old_dir}"
           echo "file=${CHECKSUM_FILE}" >>"${GITHUB_OUTPUT}"
 
+      - run: find ${{ env.DIST }} -type f | sort | xargs --max-args=1 basename
+
+      - name: Verify nFPM checksums
+        run: |
+          cosign verify-blob --certificate-identity-regexp "${GITHUB_REPOSITORY}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --signature ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig \
+            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
+
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
@@ -117,6 +126,7 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ env.DIST }}/${{ steps.checksum.outputs.file }}
+            ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*-x86_64.pkg.tar.zst
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.rpm
             ${{ env.DIST }}/${{ env.PROG }}-${{ steps.version.outputs.version }}*.x86_64.src.rpm
@@ -124,4 +134,3 @@ jobs:
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_amd64.deb
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.apk
             ${{ env.DIST }}/${{ env.PROG }}_${{ steps.version.outputs.version }}_x86_64.ipk
-          # ${{ env.DIST }}/${{ steps.checksum.outputs.file }}.sig
