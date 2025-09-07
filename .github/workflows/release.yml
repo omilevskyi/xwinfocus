@@ -100,7 +100,7 @@ jobs:
       - name: Create and sign checksums
         id: checksum
         env:
-          CHECKSUM_FILE: CHECKSUM.sha512
+          CHECKSUM_FILE: CHECKSUM.sha256
           COSIGN_EXPERIMENTAL: 1
         run: |
           old_dir="$(pwd)"
