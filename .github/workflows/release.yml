@@ -83,7 +83,7 @@ jobs:
         run: sha256sum --ignore-missing --check ${{ steps.checksums.outputs.file }}
 
       - name: Install nFPM
-        run: sudo dpkg --install ${{ steps.nfpm.outputs.file }} --no-triggers
+        run: sudo dpkg --no-triggers --install ${{ steps.nfpm.outputs.file }}
 
       - name: Create packages
         env:
