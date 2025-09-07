@@ -26,8 +26,8 @@ sleep: .PHONY .SILENT
 	sleep ${SLEEP_SEC}
 
 watch: .PHONY .SILENT
-	main_branch="$$(git branch --no-color --list 'ma*' | sed -rn 's,^\*?[[:space:]]+(main|master)$$,\1,p;q')"; \
-	if [ "_$$(git branch --no-color --show-current)" = "_$${main_branch}" ]; then \
+	main_branch="$$(git --no-pager branch --no-color --list 'ma*' | sed -rn 's,^\*?[[:space:]]+(main|master)$$,\1,p;q')"; \
+	if [ "_$$(git --no-pager branch --no-color --show-current)" = "_$${main_branch}" ]; then \
 		while [ "$${secs:=0}" -le ${SLEEP_SEC} ]; do \
 			sleep 1; \
 			run_id=$$(gh run list --branch "$${main_branch}" --event push --status in_progress --json databaseId --jq '.[0].databaseId'); \
