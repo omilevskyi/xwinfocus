@@ -4,12 +4,24 @@ MAN=		man/${PROG}.1
 
 LOCALBASE?=	/usr/local
 
-CFLAGS:=	-O3 -flto=full -funified-lto ${CFLAGS:N-O*}
+CFLAGS:=	-O3 ${CFLAGS:N-O*}
+CFLAGS+=	-flto=full -funified-lto -fsanitize=cfi-icall
+CFLAGS+=	-fomit-frame-pointer
+CFLAGS+=	-faddrsig
+CFLAGS+=	-ffunction-sections
+CFLAGS+=	-fdata-sections
+CFLAGS+=	-fstack-protector-strong
+CFLAGS+=	-ftrivial-auto-var-init=zero
+CFLAGS+=	-fzero-call-used-regs=all
+CFLAGS+=	-Wformat -Wformat-security -Werror=format-security
 CFLAGS+=	-DPROG='"${PROG}"'
 CFLAGS+=	-I${LOCALBASE}/include
 
 LDFLAGS=	-Wl,-O3
 LDFLAGS+=	-Wl,--lto=full
+LDFLAGS+=	-Wl,--icf=all
+LDFLAGS+=	-Wl,--gc-sections
+LDFLAGS+=	-Wl,--build-id=none
 LDFLAGS+=	-Wl,--as-needed
 LDFLAGS+=	-Wl,--sort-common
 LDFLAGS+=	-L${LOCALBASE}/lib
