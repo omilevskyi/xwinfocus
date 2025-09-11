@@ -4,7 +4,10 @@ HDRS:=		include/$(PROG).h include/fringe.h include/option_string.h
 MANPAGE:=	man/$(PROG).1
 OBJS:=		$(SRCS:.c=.o)
 
-CFLAGS=		-O3 -flto -DPROG=\"$(PROG)\"
+CFLAGS= 	-O3 -pipe -flto -ffunction-sections -fdata-sections -fno-semantic-interposition
+CFLAGS+=	-Wall -Wextra -Wformat -Wformat-security -Werror=format-security -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wpointer-arith -Wcast-qual -Wwrite-strings
+
+CFLAGS+=	-DPROG=\"$(PROG)\"
 
 ifneq ($(strip $(VERSION)),)
 CFLAGS+=	-DVERSION=\"$(VERSION)\"
@@ -15,8 +18,13 @@ CFLAGS+=	-DCOMMIT_HASH=\"$(COMMIT_HASH)\"
 endif
 
 LDFLAGS:=	-O3 -flto
+LDFLAGS+=	-Wl,-O3
+LDFLAGS+=	-Wl,-flto
+LDFLAGS+=	-Wl,--gc-sections
 LDFLAGS+=	-Wl,--as-needed
 LDFLAGS+=	-Wl,--sort-common
+LDFLAGS+=	-Wl,-z,pack-relative-relocs
+LDFLAGS+=	-Wl,-z,defs
 LDFLAGS+=	-lX11
 LDFLAGS+=	-lxcb
 LDFLAGS+=	-lXau
