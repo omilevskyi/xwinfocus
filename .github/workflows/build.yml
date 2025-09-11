@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: Run Build and Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     env:
       PROG: xwinfocus

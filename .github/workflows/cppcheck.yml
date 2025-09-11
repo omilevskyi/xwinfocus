@@ -13,7 +13,7 @@ jobs:
   cppcheck:
     name: Run Cppcheck
     if: ${{ github.ref != 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
