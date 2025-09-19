@@ -22,7 +22,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
-          # ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
           fetch-depth: 0
           show-progress: "false"
 
@@ -47,7 +46,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update --yes --quiet=2
-          sudo apt-get install --yes --quiet=2 --no-install-recommends \
+          sudo apt-get install --yes --quiet=2 \
+            --no-install-recommends --option DPkg::NoTriggers=true \
             build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
 
       - name: Build project
@@ -60,18 +60,8 @@ jobs:
       - name: Test run
         run: ./${PROG} --version
 
-      - name: Workaround for poor GNU cc
-        run: ln --symbolic --force --verbose ../include test/include
-
-      - name: Run test_fringe
-        run: |
-          cc -std=c99 -lcriterion -o test_fringe test/test_fringe.c fringe.c
-          ./test_fringe
-
-      - name: Run test_option_string
-        run: |
-          cc -std=c99 -lcriterion -o test_option_string test/test_option_string.c option_string.c
-          ./test_option_string
+      - name: Run unit tests
+        run: make test
 
       - name: Upload artifact bundle
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
