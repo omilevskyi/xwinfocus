@@ -25,7 +25,8 @@ jobs:
       - name: Install Cppcheck
         run: |
           sudo apt-get update --yes --quiet=2
-          sudo apt-get install --yes --quiet=2 --no-install-recommends cppcheck
+          sudo apt-get install --yes --quiet=2 \
+            --no-install-recommends --option DPkg::NoTriggers=true cppcheck
 
       - name: Run Cppcheck
         run: |
