@@ -3,12 +3,6 @@ SLEEP_SEC?=	7
 install-home: .PHONY
 	${INSTALL} -s ${PROG} ${HOME}/bin
 
-check: .PHONY
-	cppcheck --enable=all --inconclusive --check-level=exhaustive --force --error-exitcode=1 \
-		--language=c --std=c99 --platform=unix64 \
-		--suppress=missingIncludeSystem \
-		--suppress=checkersReport ${SRCS:M*.c}
-
 pr: .PHONY push do-pr sleep watch
 do-pr: .PHONY
 	gh pr create --fill
