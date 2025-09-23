@@ -37,7 +37,7 @@ INSTALL:=	install
 INSTALL_BIN:=	$(INSTALL) -s -m 0755
 INSTALL_MAN:=	$(INSTALL) -m 0644
 
-.PHONY: all clean install test
+.PHONY: all clean test install
 
 all: $(PROG) $(MANPAGE).gz
 

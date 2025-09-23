@@ -43,12 +43,14 @@ jobs:
         id: github
         run: echo 'commit_hash=${{ github.sha }}' >>"${GITHUB_OUTPUT}"
 
-      - name: Install dependencies
+      - name: Update
+        run: sudo apt-get update --yes --quiet=2
+
+      - name: Install
         run: |
-          sudo apt-get update --yes --quiet=2
           sudo apt-get install --yes --quiet=2 \
             --no-install-recommends --option DPkg::NoTriggers=true \
-            build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
+            build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev clang-tools
 
       - name: Build project
         run: make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
@@ -62,6 +64,9 @@ jobs:
 
       - name: Run unit tests
         run: make test
+
+      - name: Run scan-build
+        run: scan-build --use-cc=clang --status-bugs make
 
       - name: Upload artifact bundle
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

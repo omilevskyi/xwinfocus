@@ -7,7 +7,7 @@ size_t option_string(const struct option *opts, char *dst, size_t dst_size) {
   for (int i = 0; opts[i].name != NULL && pos < dst_size; ++i)
     if (opts[i].val > 1) { // only short forms are processed
       if (dst)
-        dst[pos] = opts[i].val;
+        dst[pos] = (char)opts[i].val;
       pos++;
       if (pos < dst_size)
         switch (opts[i].has_arg) {
