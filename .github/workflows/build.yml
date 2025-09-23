@@ -46,18 +46,25 @@ jobs:
       - name: Update
         run: sudo apt-get update --yes --quiet=2
 
-      - name: Install
+      - name: Install build necessities
         run: |
           sudo apt-get install --yes --quiet=2 \
             --no-install-recommends --option DPkg::NoTriggers=true \
-            build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev clang-tools
+            build-essential libx11-dev libxcb1-dev libxau-dev libxdmcp-dev libcriterion-dev
+
+      - name: Install clang-tools
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          sudo apt-get install --yes --quiet=2 \
+            --no-install-recommends --option DPkg::NoTriggers=true \
+            clang-tools
 
       - name: Build project
         run: make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
 
       - name: Strip binary
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: strip ./${PROG}
+        run: strip ${PROG}
 
       - name: Test run
         run: ./${PROG} --version
@@ -66,6 +73,7 @@ jobs:
         run: make test
 
       - name: Run scan-build
+        if: ${{ github.ref != 'refs/heads/main' }}
         run: scan-build --use-cc=clang --status-bugs make
 
       - name: Upload artifact bundle
