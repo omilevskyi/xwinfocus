@@ -27,7 +27,7 @@ jobs:
 
       # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
       - name: Install cocogitto
-        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        uses: cocogitto/cocogitto-action@390bda87a19bf627e03ad075c67a11e9ddbb7547 # 3.11
         with:
           check: false
           check-latest-tag-only: true
