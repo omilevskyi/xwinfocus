@@ -27,7 +27,7 @@ jobs:
 
       # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
       - name: Install cocogitto
-        uses: cocogitto/cocogitto-action@c7a74f5406bab86da17da0f0e460a69f8219a68c # 3.11
+        uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20 # v4.1.0
         with:
           check: false
           check-latest-tag-only: true
@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload artifact bundle
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # 4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ env.PROG }}
           path: |
