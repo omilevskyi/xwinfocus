@@ -25,13 +25,16 @@ jobs:
           fetch-depth: 0
           show-progress: "false"
 
+      - run: echo '${{ github.event.head_commit.message }}' > '${{ runner.temp }}/message.txt'
+
       # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
       - name: Install cocogitto
         uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20 # v4.1.0
         with:
-          check: false
-          check-latest-tag-only: true
-          verify: false
+          command: verify
+          args: --file "${{ runner.temp }}/message.txt"
+
+      - run: rm -f '${{ runner.temp }}/message.txt'
 
       - name: Get version
         id: version
