@@ -22,10 +22,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
         with:
+          ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
           fetch-depth: 0
           show-progress: "false"
 
-      - run: echo '${{ github.event.head_commit.message }}' > '${{ runner.temp }}/message.txt'
+      - run: git --no-pager log -1 --no-color --pretty=%B > '${{ runner.temp }}/message.txt'
 
       # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
       - name: Install cocogitto
