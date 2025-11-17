@@ -224,7 +224,7 @@ static void store_previous_window(Display *dpy, Window root, Window w) {
     unsigned long data[1] = {w};
     XChangeProperty(dpy, root, window, XA_WINDOW, XA_WINDOW_FMT32,
                     PropModeReplace, (unsigned char *)data,
-                    sizeof data / sizeof *data); // / sizeof(unsigned long)
+                    sizeof data / sizeof *data); /* / sizeof(unsigned long) */
     XFlush(dpy);
   }
 }
@@ -302,7 +302,7 @@ int main(int argc, char **argv) {
 
   int opt, opt_idx = 0;
   char opt_string[option_string(long_opts, NULL, 0) + 1];
-  option_string(long_opts, opt_string, sizeof opt_string); // "hc:ln:Svw:"
+  option_string(long_opts, opt_string, sizeof opt_string); /* "hc:ln:Svw:" */
 
   while ((opt = getopt_long(argc, argv, opt_string, long_opts, &opt_idx)) !=
          -1) {
@@ -398,15 +398,15 @@ int main(int argc, char **argv) {
   if (pid < 0)
     die(205, "fork() failed: %s", strerror(errno));
 
-  if (!pid) { // child process
+  if (!pid) { /* child process */
     execvp(argv[optind], &argv[optind]);
     die(206, "execvp() failed: %s", strerror(errno));
   }
 
-  // parent process
+  /* parent process */
   warn("Forked PID: %d", pid);
 
-  // open fresh Display after child starts
+  /* open fresh Display after child starts */
   if (options.wait_ms > 0 && (dpy = XOpenDisplay(display))) {
     warn("Waiting for %d ms", options.wait_ms);
     nsleep_ms(options.wait_ms);
