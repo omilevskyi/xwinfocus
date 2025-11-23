@@ -1,3 +1,4 @@
+/* Trigger build */
 #include "include/xwinfocus.h"
 
 #include <errno.h>

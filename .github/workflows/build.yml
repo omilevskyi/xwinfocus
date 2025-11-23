@@ -20,35 +20,33 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # 5.0.0
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha }} # pick PR's HEAD instead of merge commit
           fetch-depth: 0
           show-progress: "false"
 
-      - run: git --no-pager log -1 --no-color --pretty=%B > '${{ runner.temp }}/message.txt'
+      - name: Save commit message to file
+        id: commit
+        run: |
+          FILE=$(mktemp --tmpdir=${{ runner.temp }} --dry-run)
+          git --no-pager log -1 --no-color --pretty=%B >"${FILE}"
+          echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
-      # https://github.com/marketplace/actions/conventional-commit-cocogitto-action#reference
-      - name: Install cocogitto
+      - name: Verify if commit is conventional
         uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20 # v4.1.0
         with:
           command: verify
-          args: --file "${{ runner.temp }}/message.txt"
+          args: --ignore-merge-commits --ignore-fixup-commits --file ${{ steps.commit.outputs.file }}
 
-      - run: rm -f '${{ runner.temp }}/message.txt'
-
-      - name: Get version
+      - name: Get next version
         id: version
         run: |
-          version=$(cog bump --auto --dry-run)
-          echo "version=${version#v}" >>"${GITHUB_OUTPUT}"
+          rm -f -- ${{ steps.commit.outputs.file }}
+          cog bump --auto --dry-run | sed 's/^v/version=/' >>"${GITHUB_OUTPUT}"
 
-      - name: Get commit hash
-        id: github
-        run: echo 'commit_hash=${{ github.sha }}' >>"${GITHUB_OUTPUT}"
-
-      - name: Update
-        run: sudo apt-get update --yes --quiet=2
+      - name: Update packages
+        run: sudo apt-get update --yes --quiet=2 && sudo apt-get upgrade --yes --quiet=2
 
       - name: Install build necessities
         run: |
@@ -57,7 +55,7 @@ jobs:
             build-essential libcriterion-dev libx11-dev libxcb1-dev libxau-dev libxdmcp-dev
 
       - name: Build project
-        run: make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ steps.github.outputs.commit_hash }}
+        run: make VERSION=${{ steps.version.outputs.version }} COMMIT_HASH=${{ github.sha }}
 
       - name: Strip binary
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
