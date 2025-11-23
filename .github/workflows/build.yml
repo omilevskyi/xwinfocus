@@ -29,7 +29,7 @@ jobs:
       - name: Save commit message to file
         id: commit
         run: |
-          FILE=$(mktemp --tmpdir=${{ runner.temp }} --dry-run)
+          FILE=$(mktemp --dry-run --tmpdir=${{ runner.temp }})
           git --no-pager log -1 --no-color --pretty=%B >"${FILE}"
           echo "file=${FILE}" >>"${GITHUB_OUTPUT}"
 
@@ -42,10 +42,11 @@ jobs:
       - name: Get next version
         id: version
         run: |
-          rm -f -- ${{ steps.commit.outputs.file }}
+          rm --force -- ${{ steps.commit.outputs.file }}
           cog bump --auto --dry-run | sed 's/^v/version=/' >>"${GITHUB_OUTPUT}"
 
       - name: Update packages
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: sudo apt-get update --yes --quiet=2 && sudo apt-get upgrade --yes --quiet=2
 
       - name: Install build necessities
