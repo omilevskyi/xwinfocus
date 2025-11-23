@@ -23,7 +23,7 @@ jobs:
       PROG: xwinfocus
       OIDC_ISSUER: https://token.actions.githubusercontent.com
       NFPM_URL: https://github.com/goreleaser/nfpm
-      NFPM_VERSION: 2.43.1
+      NFPM_VERSION: 2.43.4
       DIST: dist
 
     permissions:
@@ -40,7 +40,7 @@ jobs:
           path: ${{ env.DIST }}
           github-token: ${{ github.token }}
 
-      - name: Get version
+      - name: Get next version
         id: version
         run: |
           set -o pipefail
